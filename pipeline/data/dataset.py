@@ -3,48 +3,71 @@ import numpy as np
 import itertools
 
 class Dataset:
-    def __init__(self, df):
+    def __init__(self, df, id_cols):
         
         # Set main DataFrame
         self.df = df
         
+        # Set id columns (used for reference when modifying the df)
+        self.id_cols = id_cols
+        
         # Set feature columns and dtypes for quick access
         self.features = {}
-        
-    def clean(self, rename_dict=None, drop_dict=None):
-        ''' Clean the dataset - E.g., rename columns, eliminate useless columns, etc.
-        '''
-        
-        # Replace all-whitespace cells with NaNs
-        self.df.replace(['^\s+$'], np.nan, regex = True, inplace=True)
-
-        # Rename selected cols
-        if rename_dict:
-            self.df.rename(columns=rename_dict, inplace=True)
-
-        # Drop selected cols
-        if drop_dict:
-            self.df.drop(columns=drop_dict, inplace=True)
-
-        # Remove all columns that are completely empty
-        self.df.dropna(axis=1, how='all', inplace=True)
 
     def set_dtypes(self, dtypes_dict):
         ''' Set dtypes on feature columns '''
-        
         for dtype, cols in dtypes_dict.items():
             if dtype == 'datetime':
-                self.df[cols] = self.df[cols].apply(pd.to_datetime, errors='coerce')
-#                 for col in cols:
-#                     self.df[col] = pd.to_datetime(self.df[col], errors='coerce')
+                for col in cols:
+                    self.df[col] = pd.to_datetime(self.df[col], errors='coerce')
             elif dtype == 'numeric':
-                self.df[cols] = self.df[cols].apply(pd.to_numeric, errors='coerce')
-#                 for col in cols:
-#                     self.df[col] = pd.to_numeric(self.df[col])
+                for col in cols:
+                    self.df[col] = pd.to_numeric(self.df[col])
             else:
-#                 for col in cols:
-#                     self.df[col] = self.df[col].fillna(-1).astype(dtype, errors='ignore') 
-                self.df[cols] = self.df[cols].fillna(-1).astype(dtype, errors='ignore')
+                for col in cols:
+                    self.df[col] = self.df[col].fillna(-1).astype(dtype, errors='ignore') 
+    
+    def clean(self, rename_dict=None, drop_dict=None):
+        ''' Clean the dataset - E.g., rename columns, eliminate useless columns
+            set initial dtypes, etc, etc.
+        '''
+
+        # Rename specific cols
+        if rename_dict:
+            self.df.rename(columns=rename_dict, inplace=True)
+
+        # Drop specific cols
+        # Need to add a safeguard so you can't drop ID columns!
+        if drop_dict:
+            self.df.drop(columns=drop_dict, inplace=True)
+            
+        # Replace all-whitespace cells with NaNs
+        self.df.replace(['^\s+$'], np.nan, regex = True, inplace=True)
+
+        # Remove all columns that are completely empty
+        self.df.dropna(axis=1, how='all', inplace=True)
+        
+        # print(self.df.shape)
+
+        # Get number of unique values for each column
+        counts = self.df.nunique()
+
+        # Record these additional columns to drop
+        to_del = [i for i,v in enumerate(counts) if v == 1]
+
+        # Drop useless columns
+        self.df.drop(self.df.columns[to_del], axis=1, inplace=True)
+#         print(self.df.shape)
+        
+        # Set dtypes on remaining columns
+        dtypes_dict = {
+            'numeric': [col for col in self.df.columns if 'date' not in col.lower()],
+            'datetime': [col for col in self.df.columns if 'date' in col.lower()]
+        }
+        
+        self.set_dtypes(dtypes_dict)
+        
+        print('Cleaning complete.')
     
     def update_features(self, features_dict, dtypes_dict=None):
         ''' Add new features and set dtypes on them, if desired''' 
