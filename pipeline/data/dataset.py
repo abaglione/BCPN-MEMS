@@ -20,12 +20,14 @@ class Dataset:
             if dtype == 'datetime':
                 for col in cols:
                     self.df[col] = pd.to_datetime(self.df[col], errors='coerce')
-            elif dtype == 'numeric':
+            
+            # Don't try to coerce the columns that fail
+            elif dtype == 'numeric': 
                 for col in cols:
-                    self.df[col] = pd.to_numeric(self.df[col])
+                    self.df[col] = pd.to_numeric(self.df[col], errors='ignore')
             else:
                 for col in cols:
-                    self.df[col] = self.df[col].fillna(-1).astype(dtype, errors='ignore') 
+                    self.df[col] = self.df[col].astype(dtype, errors='ignore') 
     
     def clean(self, rename_dict=None, drop_dict=None):
         ''' Clean the dataset - E.g., rename columns, eliminate useless columns
@@ -59,7 +61,11 @@ class Dataset:
         self.df.drop(self.df.columns[to_del], axis=1, inplace=True)
 #         print(self.df.shape)
         
-        # Set dtypes on remaining columns
+        ''' 
+        Set dtypes on remaining columns
+        For now, naively assume we only have numerics or datetimes
+        Dtype setting will ignore errors for, say, objects we try to cast to numerics
+        '''
         dtypes_dict = {
             'numeric': [col for col in self.df.columns if 'date' not in col.lower()],
             'datetime': [col for col in self.df.columns if 'date' in col.lower()]
