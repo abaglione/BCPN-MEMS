@@ -61,42 +61,15 @@ class Dataset:
         self.df.drop(self.df.columns[to_del], axis=1, inplace=True)
 #         print(self.df.shape)
         
-        ''' 
-        Set dtypes on remaining columns
-        For now, naively assume we only have numerics or datetimes
-        Dtype setting will ignore errors for, say, objects we try to cast to numerics
-        '''
-        dtypes_dict = {
-            'numeric': [col for col in self.df.columns if 'date' not in col.lower()],
-            'datetime': [col for col in self.df.columns if 'date' in col.lower()]
-        }
-        
-        self.set_dtypes(dtypes_dict)
-        
         print('Cleaning complete.')
     
-    def update_features(self, features_dict, dtypes_dict=None):
-        ''' Add new features and set dtypes on them, if desired''' 
-        
-        for feature_cat, feature_cols in features_dict.items():
-            if feature_cat not in self.features.keys():
-                self.features[feature_cat] = feature_cols
-            else:
-                self.features[feature_cat] = self.features[feature_cat] + feature_cols
-                self.features[feature_cat] = list(set(self.features[feature_cat])) # Eliminate duplicates
-        
-        if dtypes_dict:
-            self.set_dtypes(dtypes_dict)
-        
-    def build_df_from_features(self, id_cols):
-        ''' Return a dataframe with only the features defined in self.features '''
-        feat_cols = list(itertools.chain(*[v for k,v in self.features.items()]))
-        return self.df[id_cols + feat_cols]
+#     def build_df_from_features(self, id_cols, feat_cols):
+#         ''' Return a dataframe with only the specified features '''
+#         return self.df[id_cols + list(itertools.chain(*[v for k,v in feature_cols.items()]))]
         
     def __repr__(self):
         return '\n'.join([
-            f'Number of columns: {self.df.shape[1]}', 
-            f'Number of candidate features (selected columns): {sum([len(x) for x in self.features.values()])}'
+            f'Number of features: {self.df.shape[1]}'
         ])
 
 
