@@ -1,11 +1,16 @@
-'''
-Specify columns to rename - want this project to be human-readable!
+# Standard time-based constants
+SECONDS_IN_HOUR = 3600.0
+DAYS_IN_WEEK = 7.0
+
+# The threshold under which participants are considered to be nonadherent
+ADHERENCE_THRESHOLD = 0.8
+
+''' Specify columns to rename - want this project to be human-readable!
 
 Note - I manually created any needed dummy vars in SPSS and named them what I wanted
 
 Any dummy vars included in this renaming dictionary are vars leftover from Kristi's analysis that
-weren't renamed in place 
-''' 
+weren't renamed in place ''' 
 RENAMINGS = {
     'demographics': {
         'EDU_RECODE':'education', 
@@ -21,7 +26,7 @@ RENAMINGS = {
         'A_DEMO38': 'race_unsure',
         'A_DEMO2': 'hispanic_latina',
         'A_DEMO10': 'years_in_usa',
-        'A_DEMO11': 'primary_lang',
+#         'A_DEMO11': 'primary_lang', # This was recoded
         'A_DEMO13YN': 'take_meds_regularly',
     },
     'medical': { # From medical record abstraction forms (pre/post)
@@ -101,14 +106,11 @@ RENAMINGS = {
     }
 }
 
-''' 
-Many measures were administered at different time points (e.g., pre, mid-study, and post),
+''' Many measures were administered at different time points (e.g., pre, mid-study, and post),
   so we'll need to use a regex to find all columns for each score category
 
 We'll also want to store things like the max score for each measure, which will help us
-  normalize the vals later
-  
-'''
+  normalize the vals later'''
 SCORES = {
     'BACS': {
         'semantic_label': 'Barriers to Care Scale',

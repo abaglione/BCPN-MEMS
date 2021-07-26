@@ -60,6 +60,16 @@ def get_datetime_col(x):
 
     return date
 
+
+def mean_days_between_dates(x):
+    dates = [date for date in x if type(date)!= pd._libs.tslibs.nattype.NaTType]
+    dates = sorted(dates)
+    if len(dates) > 1:
+        mean_days_betw = sum((b - a).days for a, b in zip(dates, dates[1:])) / (len(dates) - 1)
+        return mean_days_betw
+    else:
+        return np.NaN
+
 def get_epochs(df, start_date_col, pid_col, time_of_day_bins=None, time_of_day_labels=None):
     '''
         Extracts common epochs of interest (day, week, month, time of day, etc)

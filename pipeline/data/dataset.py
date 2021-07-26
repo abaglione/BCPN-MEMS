@@ -11,9 +11,6 @@ class Dataset:
         # Set id columns (used for reference when modifying the df)
         self.id_cols = id_cols
         
-        # Set feature columns and dtypes for quick access
-        self.features = {}
-
     def set_dtypes(self, dtypes_dict):
         ''' Set dtypes on feature columns '''
         for dtype, cols in dtypes_dict.items():
@@ -63,9 +60,9 @@ class Dataset:
         
         print('Cleaning complete.')
     
-#     def build_df_from_features(self, id_cols, feat_cols):
-#         ''' Return a dataframe with only the specified features '''
-#         return self.df[id_cols + list(itertools.chain(*[v for k,v in feature_cols.items()]))]
+    def build_df_from_features(self, feat_cols):
+        ''' Return a dataframe with only the specified features '''
+        return self.df[self.id_cols + list(itertools.chain(*[v for k,v in feat_cols.items()]))]
         
     def __repr__(self):
         return '\n'.join([
