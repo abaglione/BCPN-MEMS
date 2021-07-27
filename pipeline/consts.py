@@ -21,7 +21,7 @@ RENAMINGS = {
         'A_DEMO33': 'race_asian',
         'A_DEMO34': 'race_native_hawaiian_pacific_islander',
         'A_DEMO35': 'race_native_american',
-        'A_DEMO36': 'race_other',
+        'A_DEMO36': 'race_other', # freetext
         'A_DEMO37': 'race_prefer_not_to_answer',
         'A_DEMO38': 'race_unsure',
         'A_DEMO2': 'hispanic_latina',
