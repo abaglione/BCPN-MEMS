@@ -26,7 +26,7 @@ class Dataset:
                 for col in cols:
                     self.df[col] = self.df[col].astype(dtype, errors='ignore') 
     
-    def clean(self, to_rename=None, to_drop=None, one_hots=None):
+    def clean(self, to_rename=None, to_drop=None, to_map = None, to_binarize=None):
         ''' Clean the dataset - E.g., rename columns, eliminate useless columns
             set initial dtypes, etc, etc.
         '''
@@ -56,12 +56,19 @@ class Dataset:
         self.df.drop(self.df.columns[to_del], axis=1, inplace=True)
 #         print(self.df.shape)
 
-        ''' Handle the special case of categoricals that were recoded as one-hot vectors and 
-        that have cells that are strings '''
-        if one_hots:
-            for col in one_hots:
+        if to_map: # Numeric to strings     
+            ''' Convert category numbers to labels, so we can have
+            meaningful column names later on'''
+            for col in list(to_map.keys()):
+                self.df[col] = pd.to_numeric(self.df[col]).map(to_map[col])
+
+        if to_binarize:
+            for col in to_binarize:
                 if col in self.df.columns:
-                    self.df[col] = self.df[col].apply(lambda x: convert_onehots(x))
+                    
+                    ''' Handle the special case of columns that were recoded as strings but
+                    need to be binary (1 or 0)''' 
+                    self.df[col] = self.df[col].apply(lambda x: binarize_col(x))           
 
         print('Cleaning complete.')
     
@@ -74,7 +81,7 @@ class Dataset:
             f'Number of features: {self.df.shape[1]}'
         ])
 
-def convert_onehots(x):
+def binarize_col(x):
     try:
         ''' try casting to int - if the column has mixed strings and numbers, this will fail for both
         string 'nan's and other strings (e.g., 'hello' would fail)'''

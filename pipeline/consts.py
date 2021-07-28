@@ -5,17 +5,20 @@ DAYS_IN_WEEK = 7.0
 # The threshold under which participants are considered to be nonadherent
 ADHERENCE_THRESHOLD = 0.8
 
-''' Specify columns to rename - want this project to be human-readable!
-
-Note - I manually created any needed dummy vars in SPSS and named them what I wanted
-
-Any dummy vars included in this renaming dictionary are vars leftover from Kristi's analysis that
-weren't renamed in place ''' 
+# Specify columns to rename - want this project to be human-readable!
 RENAMINGS = {
     'demographics': {
         'EDU_RECODE':'education', 
-        'Country': 'country',
+        'Country': 'birth_country',
         'A_DEMO1': 'age',
+        'A_DEMO2': 'hispanic_latina',
+        'A_DEMO5': 'marital_status',
+        'A_DEMO6': 'employment',
+        'A_DEMO8': 'income',
+        'A_DEMO10': 'years_in_usa',
+        'A_DEMO11': 'primary_language',
+        'A_DEMO_12': 'num_people_in_household',
+        'A_DEMO13YN': 'take_meds_regularly',
         'A_DEMO31': 'race_white',
         'A_DEMO32': 'race_black',
         'A_DEMO33': 'race_asian',
@@ -24,10 +27,6 @@ RENAMINGS = {
         'A_DEMO36': 'race_other', # freetext
         'A_DEMO37': 'race_prefer_not_to_answer',
         'A_DEMO38': 'race_unsure',
-        'A_DEMO2': 'hispanic_latina',
-        'A_DEMO10': 'years_in_usa',
-#         'A_DEMO11': 'primary_lang', # This was recoded
-        'A_DEMO13YN': 'take_meds_regularly',
     },
     'medical': { # From medical record abstraction forms (pre/post)
         'stage_recoded': 'stage',
@@ -88,6 +87,7 @@ RENAMINGS = {
         'C_MR9_zola_YN': 'post_goserelin', 
         'C_MR10': 'post_changed_meds',
         'C_MR12': 'post_side_effects',
+        'C_MR17': 'post_followup_elsewhere',
         'C_MR18': 'post_num_appts_scheduled',
         'C_MR19': 'post_num_appts_canceled_by_patient',
         'C_MR20': 'post_num_appts_missed',
@@ -103,6 +103,52 @@ RENAMINGS = {
         'C_MR24_GE': 'post_received_gyn_exam',
         'C_MR24_Otherbreastsurgery': 'post_received_other_breast_surgery',
         # C_MR25 through C_MR27 definitely have low variance - not going to bother to rename / include
+    }
+}
+
+# Codebook for categoricals
+CODEBOOK = {
+    'education': {
+        1: 'no_education',
+        2: 'grade_school',
+        3: 'some_high_school',
+        4: 'high_school_grad',
+        5: 'some_college',
+        6: 'college_grad',
+        7: 'grad_school'
+    },
+    'marital_status': {
+        1: 'single',
+        2: 'married',
+        3: 'divorced',
+        4: 'widowed'
+    },
+    'employment': {
+        0: 'not_employed',
+        1: 'part_time',
+        2: 'full_time'
+    },
+    'income': {
+        0: 'no_income',
+        1: '1_to_9999',
+        2: '10000_to_19999',
+        3: '20000_to_29999',
+        4: '30000_to_39999',
+        5: '40000_to_49999',
+        6: '50000_to_74999',
+        7: '75000_to_99999',
+        8: '100000_or_more'
+    },
+    'birth_country': {
+        1: 'USA',
+        2: 'Mexico', 
+        3: 'Other'
+    }, 
+    'primary_language': {
+        1: 'English',
+        2: 'Spanish',
+        3: 'Portuguese', 
+        4: 'Other'
     }
 }
 
