@@ -1,97 +1,46 @@
 import numpy as np
-import matplotlib.pyplot as plt
-import tensorflow as tf
+import pandas as pd
 
-'''
-Taken from official Tensorflow tutorial on Time Series Data 
-https://www.tensorflow.org/tutorials/structured_data/time_series
-'''
-
-class WindowGenerator():
-	def __init__(self, input_width, label_width, shift,
-				 train_df, val_df, test_df,
-				 label_columns=None):
-		# Store the raw data.
-		self.train_df = train_df
-		self.val_df = val_df
-		self.test_df = test_df
-
-		# Work out the label column indices.
-		self.label_columns = label_columns
-		if label_columns is not None:
-			self.label_columns_indices = {name: i for i, name in
-										  enumerate(label_columns)}
-		self.column_indices = {name: i for i, name in
-							   enumerate(train_df.columns)}
-
-		# Work out the window parameters.
-		self.input_width = input_width
-		self.label_width = label_width
-		self.shift = shift
-
-		self.total_window_size = input_width + shift
-
-		self.input_slice = slice(0, input_width)
-		self.input_indices = np.arange(self.total_window_size)[
-			self.input_slice]
-
-		self.label_start = self.total_window_size - self.label_width
-		self.labels_slice = slice(self.label_start, None)
-		self.label_indices = np.arange(self.total_window_size)[
-			self.labels_slice]
-
-	def __repr__(self):
-		return '\n'.join([
-			f'Total window size: {self.total_window_size}',
-			f'Input indices: {self.input_indices}',
-			f'Label indices: {self.label_indices}',
-			f'Label column name(s): {self.label_columns}'])
-
-	def split_window(self, features):
-		inputs = features[:, self.input_slice, :]
-		labels = features[:, self.labels_slice, :]
-		if self.label_columns is not None:
-			labels = tf.stack(
-				[labels[:, :, self.column_indices[name]]
-				 for name in self.label_columns],
-				axis=-1)
-
-		# Slicing doesn't preserve static shape information, so set the shapes
-		# manually. This way the `tf.data.Datasets` are easier to inspect.
-		inputs.set_shape([None, self.input_width, None])
-		labels.set_shape([None, self.label_width, None])
-
-		return inputs, labels
-
-	def plot(self, model=None, plot_col='T (degC)', max_subplots=3):
-		inputs, labels = self.example
-		plt.figure(figsize=(12, 8))
-		plot_col_index = self.column_indices[plot_col]
-		max_n = min(max_subplots, len(inputs))
-		for n in range(max_n):
-			plt.subplot(max_n, 1, n+1)
-			plt.ylabel(f'{plot_col} [normed]')
-			plt.plot(self.input_indices, inputs[n, :, plot_col_index],
-					label='Inputs', marker='.', zorder=-10)
-
-			if self.label_columns:
-				label_col_index = self.label_columns_indices.get(plot_col, None)
-			else:
-				label_col_index = plot_col_index
-
-			if label_col_index is None:
-				continue
-
-			plt.scatter(self.label_indices, labels[n, :, label_col_index],
-						edgecolors='k', label='Labels', c='#2ca02c', s=64)
-			if model is not None:
-				predictions = model(inputs)
-				plt.scatter(self.label_indices, predictions[n, :, label_col_index],
-							marker='X', edgecolors='k', label='Predictions',
-							c='#ff7f0e', s=64)
-
-			if n == 0:
-				plt.legend()
-
-		plt.xlabel('Time [h]')
+def generate_windows(df, label_column, window_size=1, horizon_size=1,   dropnan=True):
+    """
+    Thank you to Jason Brownlee, who created this solution 
+    (which doesn't rely on TensorFlow). This is adapted from his guide here:
+    https://machinelearningmastery.com/convert-time-series-supervised-learning-problem-python/
+    
+    Frame a time series as a supervised learning dataset.
+    Arguments:
+        df: A pandas DataFrame object.
+        window_size: Number of time steps used as input (X) (e.g., 15 weeks).
+        horizon_size: Number of time steps into the future for which we want to make a prediction
+        label_column: Name of target var we want to predict later
+        dropnan: Boolean whether or not to drop rows with NaN values.
+    Returns:
+        Pandas DataFrame of series framed for supervised learning.
+    """
+    n_vars = len(df.columns)
+    cols, names = list(), list()
+    # input sequence (t-n, ... t-1)
+    for i in range(window_size, 0, -1):
+        cols.append(df.shift(i))
+        names += [('%s(t-%d)' % (df.columns[j], i)) for j in range(n_vars)]
+    # forecast sequence (t, t+1, ... t+n)
+    for i in range(0, horizon_size):
+        cols.append(df.shift(-i))
+        if i == 0:
+            names += [('%s(t)' % df.columns[j]) for j in range(n_vars)]
+        else:
+            names += [('%s(t+%d)' % (df.columns[j], i)) for j in range(n_vars)]
+    # put it all together
+    agg = pd.concat(cols, axis=1)
+    agg.columns = names
+    # drop rows with NaN values
+    if dropnan:
+        agg.dropna(inplace=True)
+        
+    '''We only want to retain the final label column - drop the others, since they
+    shouldn't be included as features
+    ''' 
+    label_columns = [col for col in agg.columns if label_column in col][:-1]
+    agg.drop(columns=label_columns, inplace=True)
+    return agg
 

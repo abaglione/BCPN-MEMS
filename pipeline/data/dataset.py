@@ -26,7 +26,7 @@ class Dataset:
                 for col in cols:
                     self.df[col] = self.df[col].astype(dtype, errors='ignore') 
     
-    def clean(self, to_rename=None, to_drop=None, to_map = None, to_binarize=None):
+    def clean(self, to_rename=None, to_drop=None, to_map = None, to_binarize=None, onehots_to_reverse=None):
         ''' Clean the dataset - E.g., rename columns, eliminate useless columns
             set initial dtypes, etc, etc.
         '''
@@ -68,8 +68,21 @@ class Dataset:
                     
                     ''' Handle the special case of columns that were recoded as strings but
                     need to be binary (1 or 0)''' 
-                    self.df[col] = self.df[col].apply(lambda x: binarize_col(x))           
-
+                    self.df[col] = self.df[col].apply(lambda x: binarize_col(x))    
+                    
+        if onehots_to_reverse:
+            for prefix in onehots_to_reverse:
+                cols = [col for col in self.df.columns if prefix in col]
+                print(cols)
+                self.df[prefix.rstrip('_')] = self.df[cols].apply(
+                    pd.to_numeric, errors='coerce'
+                ).idxmax(1).apply(
+                    # Tried lstrip, but it strips the leading letter for some categories!
+                    lambda x: x.replace(prefix, '') if type(x) == type('string') else x # Guards against NaNs
+                ) 
+                print(prefix)
+                self.df.drop(columns=cols, inplace=True)
+                
         print('Cleaning complete.')
     
     def build_df_from_features(self, feat_cols):
