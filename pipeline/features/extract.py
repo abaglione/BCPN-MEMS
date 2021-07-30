@@ -103,17 +103,6 @@ def get_epochs(df, start_date_col, pid_col, time_of_day_bins=None, time_of_day_l
     
     return df
 
-def gen_categories(df, col_properties):
-    ''' 
-        Create column(s) that categorize observations based on cutoff values for existing column(s)
-        Example:
-        
-    '''
-    for col, props in col_properties.items():
-        df[col + '_cat'] = pd.cut(df[col], props['bins'], labels=props['labels'])
-    
-    return df
-
 def calc_standard_static_metrics(df, cols, col_prefix):
     
     df[col_prefix + 'mean'] = df[cols].mean(axis=1)
