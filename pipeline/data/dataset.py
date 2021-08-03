@@ -3,13 +3,13 @@ import numpy as np
 import itertools
 
 class Dataset:
-    def __init__(self, df, id_cols):
+    def __init__(self, df, id_col):
         
         # Set main DataFrame
         self.df = df
         
-        # Set id columns (used for reference when modifying the df)
-        self.id_cols = id_cols
+        # Set id column (used for reference when modifying the df)
+        self.id_col = id_col
         
     def set_dtypes(self, dtypes_dict):
         ''' Set dtypes on feature columns '''
@@ -87,7 +87,7 @@ class Dataset:
     
     def build_df_from_features(self, feat_cols):
         ''' Return a dataframe with only the specified features '''
-        return self.df[self.id_cols + list(itertools.chain(*[v for k,v in feat_cols.items()]))]
+        return self.df[[self.id_col] + list(itertools.chain(*[v for k,v in feat_cols.items()]))]
         
     def __repr__(self):
         return '\n'.join([

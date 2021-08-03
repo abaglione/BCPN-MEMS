@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-def series_to_supervised(df, n_in=1, n_out=1, dropnan=True):
+def series_to_supervised(df, time_col, target_col, n_in=1, n_out=1, dropnan=True):
     """
     Thank you to Jason Brownlee, who created this solution 
     (which doesn't rely on TensorFlow). This is adapted from his guide here:
@@ -40,5 +40,12 @@ def series_to_supervised(df, n_in=1, n_out=1, dropnan=True):
     # drop rows with NaN values
     if dropnan:
         agg.dropna(inplace=True)
+    
+    # Drop all time columns (e.g. 'study_week')
+    agg.drop(columns = [col for col in agg.columns if time_col in col], inplace=True)
+    
+    ''' For the target column (the value we want to predict) retain only the observations at time t onwards, 
+    since we don't want these as input features '''
+    agg.drop(columns = [col for col in agg.columns if target_col in col][:n_in], inplace=True)
 
     return agg
