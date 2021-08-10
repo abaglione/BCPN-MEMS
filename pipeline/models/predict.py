@@ -1,12 +1,20 @@
 import numpy as np
 import pandas as pd
+from imblearn.over_sampling import SMOTE
+import shap
+import pickle
+import xgboost
+from sklearn.model_selection import GridSearchCV
 from sklearn.model_selection import LeaveOneGroupOut
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 
 # credit to Lee Cai
 def tune_params(X, y, target_col, method):
     
     model = None
     
+    # TODO - adjust n_estimators?
     if method == 'XGB':
         n_estimators = [50,100,200,500]
         max_depth = [3,6,9]
@@ -38,7 +46,7 @@ def predict(df, id_col, target_col):
     
     # Split into inputs and labels
     X = df[[col for col in df.columns if col != target_col]]
-    y = df[[target_col]]
+    y = df[target_col]
     
     # Need to tune smote samples?
     smote = SMOTE(random_state=50)
@@ -54,11 +62,11 @@ def predict(df, id_col, target_col):
     X[id_col] = X[id_col].astype(str)
     
     # Format y
-    y = pd.Series(y1_anx_res)
+    y = pd.Series(y)
     
     # Pull out the id column so we can do LOOCV in the next steps
     ids = X[id_col]
-    X = X[[col for col in df.columns if col != id_col]]
+    X = X[[col for col in X.columns if col != id_col]]
 
     class_outputs = []
     
@@ -111,7 +119,7 @@ def predict(df, id_col, target_col):
         X_test = pd.DataFrame(X.iloc[test_set],columns=X.columns)
 
         # Save the shap info
-        filename = method + '_' + outvar + '_' + expvars_label
+        filename = method + '_' + target_col
         with open('feature_importance/X_test_' + filename + '.ob', 'wb') as fp:
             pickle.dump(X_test, fp)
 
@@ -135,13 +143,13 @@ def predict(df, id_col, target_col):
         
         class_outputs.append(
             {
-                'method':method,'outcome':outvar,'feature_set':expvars_label, 
+                'method':method,'target':target_col,
                 'accuracy':acc, 'f1_score': f1, 'precision': precision, 'recall': recall
             }
         )
 
-        class_outputs_df = pd.DataFrame(class_outputs)
-        class_outputs_df.to_csv('results/class_outcomes.csv',index=False)
+        class_outputs = pd.DataFrame(class_outputs)
+        class_outputs.to_csv('results/class_outcomes.csv',index=False)
     
 
 

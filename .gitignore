@@ -127,3 +127,7 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# Don't upload results or feature importances
+/results
+/feature_importance
