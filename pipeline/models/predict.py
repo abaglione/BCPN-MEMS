@@ -37,10 +37,10 @@ def tune_params(X, y, target_col, method):
     
     # Return the final model
     if method == 'XGB':
-        return RandomForestClassifier(**best_params)
-    elif method == 'RF':     
         return xgboost.XGBClassifier(**best_params)
-
+    elif method == 'RF':
+        return RandomForestClassifier(**best_params)
+     
 # Adapted from engagement study code - credit to Lee Cai, who co-authored the original code
 def predict(df, id_col, target_col):
     
@@ -67,7 +67,7 @@ def predict(df, id_col, target_col):
     # Pull out the id column so we can do LOOCV in the next steps
     ids = X[id_col]
     X = X[[col for col in X.columns if col != id_col]]
-
+    
     class_outputs = []
     
     for method in ['RF', 'XGB']:       
@@ -83,48 +83,49 @@ def predict(df, id_col, target_col):
            Participant IDs act as group labels. '''
         logo = LeaveOneGroupOut()
 
-        for train_indices, test_indices in logo.split(X, y, groups):
-            list_test_sets.append(X_test_indices)
+        for train_indices, test_indices in logo.split(X, y, ids):
+            list_test_sets.append(test_indices)
             
-            X_train, y_train = X[train_index], y[train_index]
-            X_test, y_test = X[test_index], y[test_index]
+            X_train, y_train = X.loc[train_indices, :], y[train_indices]
+            X_test, y_test = X.loc[test_indices, :], y[test_indices]
             
             model.fit(X_train,y_train)
-            pred = model_final.predict(X_test)
+            pred = model.predict(X_test)
             
             df = pd.DataFrame({'pred':pred, 'actual':y_test})
             res.append(df)
             
-            shap_values = shap.TreeExplainer(model_final).shap_values(X_test)
+            shap_values = shap.TreeExplainer(model).shap_values(X_test)
             # print(shap_values)
 
             list_shap_values.append(shap_values)
             
+        # TODO - bring this back so we can track shap vals
         # https://lucasramos-34338.medium.com/visualizing-variable-importance-using-shap-and-cross-validation-bd5075e9063a
 
         # Combine results from all iterations
-        test_set = list_test_sets[0]
-        shap_values = np.array(list_shap_values[0])
-        # print(shap_values)
-        # print(list_shap_values[1])
+#         test_set = list_test_sets[0]
+#         shap_values = np.array(list_shap_values[0])
+#         # print(shap_values)
+#         # print(list_shap_values[1])
         
-        for i in range(1,len(list_test_sets)):
-            test_set = np.concatenate((test_set,list_test_sets[i]),axis=0)
-            if method == 'RF':
-                shap_values = np.concatenate((shap_values,np.array(list_shap_values[i])),axis=1)
-            else:
-                shap_values = np.concatenate((shap_values,list_shap_values[i]),axis=0)
+#         for i in range(1,len(list_test_sets)):
+#             test_set = np.concatenate((test_set,list_test_sets[i]),axis=0)
+#             if method == 'RF':
+#                 shap_values = np.concatenate((shap_values,np.array(list_shap_values[i])),axis=1)
+#             else:
+#                 shap_values = np.concatenate((shap_values,list_shap_values[i]),axis=0)
 
-        # Bring back variable names    
-        X_test = pd.DataFrame(X.iloc[test_set],columns=X.columns)
+#         # Bring back variable names    
+#         X_test = pd.DataFrame(X.iloc[test_set],columns=X.columns)
 
-        # Save the shap info
-        filename = method + '_' + target_col
-        with open('feature_importance/X_test_' + filename + '.ob', 'wb') as fp:
-            pickle.dump(X_test, fp)
+#         # Save the shap info
+#         filename = method + '_' + target_col
+#         with open('feature_importance/X_test_' + filename + '.ob', 'wb') as fp:
+#             pickle.dump(X_test, fp)
 
-        with open('feature_importance/shap_' + filename + '.ob', 'wb') as fp:
-            pickle.dump(shap_values, fp)
+#         with open('feature_importance/shap_' + filename + '.ob', 'wb') as fp:
+#             pickle.dump(shap_values, fp)
 
         # Save all relevant stats
         res_df = pd.concat(res,copy=True)
@@ -148,10 +149,9 @@ def predict(df, id_col, target_col):
             }
         )
 
-        class_outputs = pd.DataFrame(class_outputs)
-        class_outputs.to_csv('results/class_outcomes.csv',index=False)
-    
-
+    class_outputs = pd.DataFrame(class_outputs)
+    class_outputs.to_csv('results/class_outcomes.csv',index=False)
+    return class_outputs
 
     
     

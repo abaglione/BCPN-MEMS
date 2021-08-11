@@ -3,7 +3,7 @@ import numpy as np
 import itertools
 
 class Dataset:
-    def __init__(self, df, id_col):
+    def __init__(self, df, id_col, feature_categories=None):
         
         # Set main DataFrame
         self.df = df
@@ -11,6 +11,9 @@ class Dataset:
         # Set id column (used for reference when modifying the df)
         self.id_col = id_col
         
+        # Store a dictionary of category, list of column pairs
+        self.feature_categories = feature_categories
+
     def set_dtypes(self, dtypes_dict):
         ''' Set dtypes on feature columns '''
         for dtype, cols in dtypes_dict.items():
@@ -84,10 +87,33 @@ class Dataset:
                 self.df.drop(columns=cols, inplace=True)
                 
         print('Cleaning complete.')
+
+    def update_feature_categories(self, feature_categories):
+        for category, cols in feature_categories.items():
+            if not self.feature_categories:
+                self.feature_categories = feature_categories
+            elif category not in self.feature_categories.keys():
+                self.feature_categories[category] = list(set(cols))
+            else:
+                self.feature_categories[category] = list(set(self.feature_categories[category] + cols))
     
-    def build_df_from_features(self, feat_cols):
-        ''' Return a dataframe with only the specified features '''
-        return self.df[[self.id_col] + list(itertools.chain(*[v for k,v in feat_cols.items()]))]
+    def build_df_from_feature_categories(self, categories='all'):
+        if categories == 'all':
+            return self.df[[self.id_col] +\
+            list(
+                 itertools.chain(
+                     *[v for k,v in self.feature_categories.items()]
+                     )
+                )
+            ]
+        else:
+            return self.df[[self.id_col] +\
+                list(
+                    itertools.chain(
+                        *[v for k,v in self.feature_categories.items() if k in categories]
+                        )
+                    )
+                ]
         
     def __repr__(self):
         return '\n'.join([
