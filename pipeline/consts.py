@@ -162,97 +162,113 @@ SCORES = {
         'semantic_label': 'Barriers to Care Scale',
         'suffix': '_BACS',
         'max_val': 140, 
-        'precalculated': False
+        'precalculated': False,
+        'subscale_include': False
     },
     'BCPT': {
         'semantic_label': 'Breast Cancer Prevention Trial Symptom Checklist',
         'suffix': '_BCPT',
         'max_val': 168, 
-        'precalculated': False
+        'precalculated': False,
+        'subscale_include': False
     },
     'BCSK': {
         'semantic_label': 'Breast Cancer Survivorship Knowledge',
         'suffix': '_BCSK',
         'max_val': 32, 
-        'precalculated': False
+        'precalculated': False,
+        'subscale_include': False
     },
     'BMQ': {
         'semantic_label': 'Beliefs About Medicines Questionnaire',
         'suffix': '_BMQ',
         'max_val': 50, 
-        'precalculated': False
+        'precalculated': False,
+        'subscale_include': False
     },
     'CASE': {
         'semantic_label': 'CASE',
         'suffix': '_CASE',
         'max_val': 48, 
-        'precalculated': False
+        'precalculated': False,
+        'subscale_include': False
     },
     'DECREG': {
         'semantic_label': 'Decision Regret Scale',
         'suffix': '_DECREG',
         'max_val': 25, 
-        'precalculated': False
+        'precalculated': False,
+        'subscale_include': False
     },
     'FACIT_SP': {
         'semantic_label': 'FACIT-SP',
         'suffix': '_FACITSP',
         'max_val': 48, 
-        'precalculated': False
+        'precalculated': False,
+        'subscale_include': False
     },
     'FACT_B': {
         'semantic_label': 'FACT-B',
         'suffix': '_FACTB',
         'max_val': 148, 
-        'precalculated': True
+        'precalculated': True,
+        'subscale_include': False
     },
     'FACT_BC': {
         'semantic_label': 'FACT Breast Cancer Subscale',
         'suffix': '_BC',
         'max_val': 40, 
-        'precalculated': True
+        'precalculated': True,
+        'subscale_include': False # This is a FACT-G subscale, but we're more interested in FACT-B vs FACT-G
     },
     'FACT_G_PWB': {
         'semantic_label': 'FACT-G Physical Well-Being Subscale',
         'suffix': '_PWB',
         'max_val': 28, 
-        'precalculated': True
+        'precalculated': True,
+        'subscale_include': True
     },
     'FACT_G_SWB': {
         'semantic_label': 'FACT-G Social Physical Well-Being Subscale',
         'suffix': '_SWB',
         'max_val': 28,
-        'precalculated': True
+        'precalculated': True,
+        'subscale_include': True
     },
     'FACT_G_EWB': {
         'semantic_label': 'FACT-G Emotional Physical Well-Being Subscale',
         'suffix': '_EWB',
         'max_val': 28, 
-        'precalculated': True
+        'precalculated': True,
+        'subscale_include': True
     },
     'FACT_G_FWB': {
         'semantic_label': 'FACT-G Functional Physical Well-Being Subscale',
         'suffix': '_FWB',
         'max_val': 28, 
-        'precalculated': True
+        'precalculated': True,
+        'subscale_include': True
     },
     'FACT_G': {
         'semantic_label': 'FACT-G',
         'suffix': '_FACTG',
         'max_val': 108, 
-        'precalculated': True
+        'precalculated': True,
+        'subscale_include': False
     },
     'MDASI': {
         'semantic_label': 'MD Anderson Symptom Inventory',
         'suffix': '_MDASI',
         'max_val': 190, 
-        'precalculated': False
+        'precalculated': False,
+        'subscale_include': False
     },
     'MASES': {
         'semantic_label': 'Medication Adherence Self-Efficacy Scale',
         'suffix': '_MASES',
         'max_val': 210, 
-        'precalculated': False
+        'precalculated': False,
+        'subscale_include': False
     },
 #     'MEDAD': {
 #         'semantic_label': 'Medication Adherence Scale',
@@ -264,37 +280,43 @@ SCORES = {
         'semantic_label': 'Pearlin Mastery Scale',
         'suffix': '_PEARL',
         'max_val': 35, 
-        'precalculated': False
+        'precalculated': False,
+        'subscale_include': False
     },
     'PTGI': {
         'semantic_label': 'Posttraumatic Growth Inventory',
         'suffix': '_PTGI',
         'max_val': 50, 
-        'precalculated': False
+        'precalculated': False,
+        'subscale_include': False
     },
     'PSAT': {
         'semantic_label': 'Patient Satisfaction',
         'suffix': '_PSAT',
         'max_val': 85, 
-        'precalculated': False
+        'precalculated': False,
+        'subscale_include': False
     },
     'PSS': {
         'semantic_label': 'Perceived Stress Scale',
         'suffix': '_PSS',
         'max_val': 70, 
-        'precalculated': False
+        'precalculated': False,
+        'subscale_include': False
     },
     'PSUSP': {
         'semantic_label': 'Perceived Susceptibility Scale',
         'suffix': '_PSUSP',
         'max_val': 15, 
-        'precalculated': False
+        'precalculated': False,
+        'subscale_include': False
     },
     'SS': {  
         'semantic_label': 'Krause and Borwaski-Clark Social Support Scale',
         'suffix': '_SS',
         'max_val': 42, 
-        'precalculated': False
+        'precalculated': False,
+        'subscale_include': False
     },
 
 }

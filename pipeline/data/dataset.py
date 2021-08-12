@@ -88,11 +88,11 @@ class Dataset:
                 
         print('Cleaning complete.')
 
-    def update_feature_categories(self, feature_categories):
+    def update_feature_categories(self, feature_categories, replace=False):
         for category, cols in feature_categories.items():
             if not self.feature_categories:
                 self.feature_categories = feature_categories
-            elif category not in self.feature_categories.keys():
+            elif category not in self.feature_categories.keys() or replace == True:
                 self.feature_categories[category] = list(set(cols))
             else:
                 self.feature_categories[category] = list(set(self.feature_categories[category] + cols))

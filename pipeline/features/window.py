@@ -49,3 +49,35 @@ def series_to_supervised(df, time_col, target_col, n_in=1, n_out=1, dropnan=True
     agg.drop(columns = [col for col in agg.columns if target_col in col][:n_in], inplace=True)
 
     return agg
+
+def get_lags(df, id_col, epoch, target_col):
+    '''Generate lagged observations for temporal data, for each subject '''
+   
+    rows = []
+    
+    for unique_id in df[id_col].unique(): 
+
+        # Filter by subject
+        subset = df[df[id_col] == unique_id]
+
+        # Sort by epoch
+        subset.sort_values(by=epoch, ascending=True)
+
+        # Get features as supervised learning df
+        # Temporal features will be lagged by a window of size 3
+        agg = series_to_supervised(subset.iloc[:, 1:], time_col = epoch, target_col = target_col, 
+                                   n_in=3, n_out=1) 
+
+        # Be sure to add the unique id column back in, at the very beginning
+        agg.insert(0, id_col, unique_id)
+
+        # Add to list of dfs to concatenate together
+        rows.append(agg)
+
+    # Get all subjects' lagged features together
+    res = pd.concat(rows, axis=0)
+    
+    return res
+               
+             
+             
