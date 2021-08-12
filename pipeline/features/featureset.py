@@ -8,7 +8,12 @@ class Featureset(df, name, id_col, target_col=None):
     self.name = name
     self.id_col = id_col
     self.target_col = target_col
-
+    
+    # Assumes they have the same id_col
+    def create_combined_featureset(self, fs, target=self.target_col):
+        df = self.df.merge(fs.df, on=[self.id_col])
+        return Featureset(df=df, name=self.name + ' - ' + fs.name, id_col=self.id_col, target=self.target_col)
+    
     def prep_for_modeling(self, categoricals):
 
          # One-hot encode categoricals
@@ -24,7 +29,7 @@ class Featureset(df, name, id_col, target_col=None):
 
         import pandas as pd
         
-    def get_lagged_df(self, epoch, n_lags):
+    def get_lagged_fs(self, epoch, n_lags):
         '''Generate lagged observations for temporal data, for each subject '''
 
         rows = []
@@ -51,7 +56,7 @@ class Featureset(df, name, id_col, target_col=None):
         # Get all subjects' lagged features together
         res = pd.concat(rows, axis=0)
 
-        return res
+        return Featureset(df=res, name=self.name, id_col=self.id_col, target_col=self.target_col)
 
 def impute(df, id_col, numerics, categoricals=None):
     if categoricals:
