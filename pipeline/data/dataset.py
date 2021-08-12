@@ -116,8 +116,13 @@ class Dataset:
                 ]
         
     def __repr__(self):
+        
+        n_cand_feats = 0 if not self.feature_categories else \
+                        len(list(itertools.chain(*[v for v in self.feature_categories.values()])))
+        
         return '\n'.join([
-            f'Number of features: {self.df.shape[1]}'
+            f'Number of columns: {self.df.shape[1]}',
+            f'Number of candidate features: { n_cand_feats }'
         ])
 
 def binarize_col(x):

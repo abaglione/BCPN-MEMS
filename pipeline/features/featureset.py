@@ -3,21 +3,23 @@ import pandas as pd
 from sklearn.experimental import enable_iterative_imputer
 from sklearn.impute import IterativeImputer
 
-class Featureset(df, name, id_col, target_col=None):
-    self.df = df
-    self.name = name
-    self.id_col = id_col
-    self.target_col = target_col
-    
-    # Assumes they have the same id_col
-    def create_combined_featureset(self, fs, target=self.target_col):
+class Featureset:
+    def __init__(self, df, name, id_col, target_col=None):
+        self.df = df
+        self.name = name
+        self.id_col = id_col
+        self.target_col = target_col
+
+    def create_combined_featureset(self, fs):
+        # Assumes they have the same id_col
         df = self.df.merge(fs.df, on=[self.id_col])
-        return Featureset(df=df, name=self.name + ' - ' + fs.name, id_col=self.id_col, target=self.target_col)
+        return Featureset(df=df, name=self.name + ' - ' + fs.name, id_col=self.id_col, target_col=self.target_col)
     
     def prep_for_modeling(self, categoricals):
 
-         # One-hot encode categoricals
-        self.df = pd.get_dummies(self.df, columns=categoricals) 
+        ''' One-hot encode categoricals
+        Ensure we restrict to only existing columns'''
+        self.df = pd.get_dummies(self.df, columns=set(list(categoricals)).intersection(set(list(self.df.columns))))
 
         # Exclude datetimes /non-numerics
         self.df = self.df.select_dtypes('number') # Assumes target col is numeric
@@ -26,10 +28,8 @@ class Featureset(df, name, id_col, target_col=None):
         scaler = MinMaxScaler(feature_range=(0, 1))
         to_scale = [col for col in self.df.columns if col != self.id_col and col != self.target_col]
         self.df[to_scale] = scaler.fit_transform(self.df[to_scale]) 
-
-        import pandas as pd
         
-    def get_lagged_fs(self, epoch, n_lags):
+    def get_lagged_featureset(self, epoch, n_lags):
         '''Generate lagged observations for temporal data, for each subject '''
 
         rows = []
@@ -57,6 +57,12 @@ class Featureset(df, name, id_col, target_col=None):
         res = pd.concat(rows, axis=0)
 
         return Featureset(df=res, name=self.name, id_col=self.id_col, target_col=self.target_col)
+            
+    def __repr__(self):       
+        return '\n'.join([
+            f'Number of features: {self.df.shape[1] - 2}', # Exclude id column and target column
+            f'Name: { self.name }'
+        ])
 
 def impute(df, id_col, numerics, categoricals=None):
     if categoricals:
