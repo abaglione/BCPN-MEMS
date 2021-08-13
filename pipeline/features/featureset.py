@@ -1,7 +1,6 @@
 import numpy as np
 import pandas as pd
-from sklearn.experimental import enable_iterative_imputer
-from sklearn.impute import IterativeImputer
+from sklearn.preprocessing import MinMaxScaler
 
 class Featureset:
     def __init__(self, df, name, id_col, target_col=None):
@@ -60,19 +59,10 @@ class Featureset:
             
     def __repr__(self):       
         return '\n'.join([
+            f'Name: { self.name }',
             f'Number of features: {self.df.shape[1] - 2}', # Exclude id column and target column
-            f'Name: { self.name }'
+            f'Number of observations: {self.df.shape[0]}' 
         ])
-
-def impute(df, id_col, numerics, categoricals=None):
-    if categoricals:
-        numerics = list(set(numerics) - set(categoricals))
-        for col in categoricals:
-            df[col].fillna(df[col].mode()[0], inplace=True)
-
-    imputer = IterativeImputer(random_state=5)
-    df[numerics] = imputer.fit_transform(df[numerics])
-    return df
         
 def series_to_supervised(df, time_col, target_col, n_in=1, n_out=1, dropnan=True):
     """
@@ -120,6 +110,9 @@ def series_to_supervised(df, time_col, target_col, n_in=1, n_out=1, dropnan=True
     ''' For the target column (the value we want to predict) retain only the observations at time t onwards, 
     since we don't want these as input features '''
     agg.drop(columns = [col for col in agg.columns if target_col in col][:n_in], inplace=True)
+    
+    # drop the (t) suffix in the target column
+    agg.rename(columns = {target_col+'(t)': target_col}, inplace=True)
 
     return agg
 

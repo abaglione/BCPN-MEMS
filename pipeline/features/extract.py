@@ -129,19 +129,21 @@ def calc_standard_temporal_metrics(df, groupby_cols, datetime_col):
         ),
         'event_time_max': lambda x: np.floor(
             x.dt.hour.max()
-        ),    
-        'between_event_time_mean': lambda x: np.floor(
-            abs(x.diff().mean().total_seconds() / SECONDS_IN_HOUR)
         ),
-        'between_event_time_std': lambda x: np.floor(
-            x.diff().mean().total_seconds() / SECONDS_IN_HOUR
-        ),
-        'between_event_time_min': lambda x: np.floor(
-            x.diff().min().total_seconds() / SECONDS_IN_HOUR
-        ),
-        'between_event_time_max': lambda x: np.floor(
-            x.diff().max().total_seconds() / SECONDS_IN_HOUR
-        )
+        # Shouldn't be using these - they directly relate to the definition of adherence!
+        # i.e., within range
+#         'between_event_time_mean': lambda x: np.floor(
+#             abs(x.diff().mean().total_seconds() / SECONDS_IN_HOUR)
+#         ),
+#         'between_event_time_std': lambda x: np.floor(
+#             x.diff().std().total_seconds() / SECONDS_IN_HOUR
+#         ),
+#         'between_event_time_min': lambda x: np.floor(
+#             x.diff().min().total_seconds() / SECONDS_IN_HOUR
+#         ),
+#         'between_event_time_max': lambda x: np.floor(
+#             x.diff().max().total_seconds() / SECONDS_IN_HOUR
+#         )
     }).reset_index()
     return res
     
