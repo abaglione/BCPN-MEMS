@@ -38,10 +38,11 @@ def tune_params(X, y, target_col, method):
         model = LogisticRegression()  
     
     elif method == 'RF':
+        print(len(X.columns) / 2)
         param_grid = {
             'n_estimators': [50,100,200,500],
             'max_depth': [2,5,10],
-            'max_features': [10,12,15]
+            'max_features': [len(X.columns) / 2, len(X.columns)] 
         }
         model = RandomForestClassifier(oob_score=True,random_state=1008)
         
