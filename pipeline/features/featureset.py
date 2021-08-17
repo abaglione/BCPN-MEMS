@@ -8,7 +8,9 @@ class Featureset:
         self.name = name
         self.id_col = id_col
         self.target_col = target_col
-
+        self.num_feats = self.df.shape[1] - 2 # Exclude id column and target column
+        self.num_obs = self.df.shape[0]
+        
     def create_combined_featureset(self, fs):
         # Assumes they have the same id_col
         df = self.df.merge(fs.df, on=[self.id_col])
@@ -59,8 +61,8 @@ class Featureset:
     def __repr__(self):       
         return '\n'.join([
             f'Name: { self.name }',
-            f'Number of features: {self.df.shape[1] - 2}', # Exclude id column and target column
-            f'Number of observations: {self.df.shape[0]}' 
+            f'Number of features: {self.num_feats}', 
+            f'Number of observations: {self.num_obs}' 
         ])
         
 def series_to_supervised(df, time_col, target_col, n_in=1, n_out=1, dropnan=True):
