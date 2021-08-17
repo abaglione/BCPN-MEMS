@@ -14,11 +14,10 @@ class Featureset:
         df = self.df.merge(fs.df, on=[self.id_col])
         return Featureset(df=df, name=self.name + ' - ' + fs.name, id_col=self.id_col, target_col=self.target_col)
     
-    def prep_for_modeling(self, categoricals):
+    def prep_for_modeling(self):
 
-        ''' One-hot encode categoricals
-        Ensure we restrict to only existing columns'''
-        self.df = pd.get_dummies(self.df, columns=set(list(categoricals)).intersection(set(list(self.df.columns))))
+        # One-hot encode categoricals
+        self.df = pd.get_dummies(self.df, columns=self.df.select_dtypes('category').columns)
 
         # Exclude datetimes /non-numerics
         self.df = self.df.select_dtypes('number') # Assumes target col is numeric

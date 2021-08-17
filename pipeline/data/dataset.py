@@ -25,6 +25,9 @@ class Dataset:
             elif dtype == 'numeric': 
                 for col in cols:
                     self.df[col] = pd.to_numeric(self.df[col], errors='ignore')
+            elif dtype == 'categorical':
+                for col in cols:
+                    self.df[col] = pd.Categorical(self.df[col], ordered=False)
             else:
                 for col in cols:
                     self.df[col] = self.df[col].astype(dtype, errors='ignore') 
