@@ -68,41 +68,6 @@ RENAMINGS = {
         'A_MR10_s': 'pre_cancer_other',
         'A_MR10_t': 'pre_arthritis',
         'A_MR10_u': 'pre_mental_illness',
-        # ---- Procedures recommended / received since enrollment --- 
-        'C_MR3': 'post_num_exams_recommended',
-        'C_MR4': 'at_least_one_exam',
-        'C_MR5': 'post_all_exams_obtained',
-        'C_MR6': 'post_num_mammograms_recommended',
-        'C_MR7_RECODED': 'post_any_mammograms_received',
-        'C_MR7_YN_RECODED': 'post_all_mammograms_received',
-        # ---- Drugs prescribed since enrollment ---
-        'C_MR9_tamox_YN': 'post_tamoxifen',
-        # Note that `evist` and `ralox` prefixes both refer to same med
-        'C_MR9_evist_YN': 'post_raloxifene', 
-        # Same note as above; different prefixes used here, but refer to same respective meds
-        'C_MR9_fares_YN': 'post_toremifene',
-        'C_MR9_arim_YN': 'post_anastrazole',
-        'C_MR9_aroma_YN': 'post_exemestane',
-        'C_MR9_femara_YN': 'post_letrozole',
-        'C_MR9_zola_YN': 'post_goserelin', 
-        'C_MR10': 'post_changed_meds',
-        'C_MR12': 'post_side_effects',
-        'C_MR17': 'post_followup_elsewhere',
-        'C_MR18': 'post_num_appts_scheduled',
-        'C_MR19': 'post_num_appts_canceled_by_patient',
-        'C_MR20': 'post_num_appts_missed',
-        # C_MR21 through C_MR23 definitely have low variance - not going to bother to rename / include
-        'C_MR24_MRI': 'post_received_mri',
-        'C_MR24_US': 'post_received_ultrasound',
-        'C_MR24_BI': 'post_received_biopsy',
-        'C_MR24_CT': 'post_received_ct_scan',
-        'C_MR24_BS': 'post_received_bone_scan',
-        'C_MR24_AS': 'post_received_addnl_surgery',
-        'C_MR24_AR': 'post_received_addnl_radiation',
-        'C_MR24_GT': 'post_received_genetic_couns_test',
-        'C_MR24_GE': 'post_received_gyn_exam',
-        'C_MR24_Otherbreastsurgery': 'post_received_other_breast_surgery',
-        # C_MR25 through C_MR27 definitely have low variance - not going to bother to rename / include
     }
 }
 
