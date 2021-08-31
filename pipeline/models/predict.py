@@ -9,9 +9,10 @@ from sklearn.model_selection import LeaveOneGroupOut
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import SVC
-from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, mean_absolute_error, roc_curve
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, mean_absolute_error, roc_curve, confusion_matrix
+import matplotlib.pyplot as plt
 
-def get_stats(res_df, actual='actual', pred='pred'):
+def get_stats(res_df, actual='actual', pred='pred', labels=[0,1]):
     stats = {}
     
     res_df['accuracy'] = accuracy_score(y_true = res_df[actual], y_pred=res_df[pred])
@@ -26,10 +27,19 @@ def get_stats(res_df, actual='actual', pred='pred'):
     res_df['recall'] = recall_score(y_true = res_df[actual], y_pred=res_df[pred])
     stats['recall'] = res_df['recall'].sum()/res_df.shape[0]
     
-    tpr, fpr, threshold = roc_curve(res_df[actual], res_df[pred])
-    stats.update({'tpr': tpr, 'fpr': fpr, 'threshold': threshold})
+    tn, fp, fn, tp = confusion_matrix(res_df[actual], res_df[pred], labels=labels).ravel()
+    stats.update({'tpr': tp / (tp + fn), 'fpr': fp / (fp + tn), 
+                  'tnr': tn / (tn + fp), 'fnr': fn / (tp + fn)
+                 })
     
     return stats
+
+# def plot_curve(model, method, X_test, y_test, n_lags):
+#     ax = plt.gca()
+#     disp = plot_roc_curve(model, X_test, y_test, ax=ax, alpha=0.8)
+#     disp.plot([0,1],[0,1],'g--', ax=ax, alpha=0.8)
+#     plt.savefig('results/roc_' + method + '_' + str(n_lags) + '_lags.png')
+#     plt.show()
 
 # credit to Lee Cai, who bootstrapped the original function in a diff project
 # Some modifications have been made to suit this project.
@@ -222,7 +232,7 @@ def predict(fs, n_lags, classifiers=None, optimize=True):
      
             train_res_df = pd.concat(train_res,copy=True)
             test_res_df = pd.concat(test_res,copy=True)
-        
+            
             # Get train and test results as separate dictionaries
             train_res = get_stats(train_res_df)
             test_res = get_stats(test_res_df)
@@ -236,8 +246,9 @@ def predict(fs, n_lags, classifiers=None, optimize=True):
             # Add remaining info 
             train_test_res.update({'n_lags': n_lags, 'featureset': fs.name, 'n_samples': n_samples,
                                    'method': method,'target': fs.target_col})
+            
             all_results.append(train_test_res)
-
+        
         return pd.DataFrame(all_results)
 
     
