@@ -8,25 +8,32 @@ from sklearn.model_selection import GridSearchCV
 from sklearn.model_selection import LeaveOneGroupOut
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, mean_absolute_error
+from sklearn.svm import SVC
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, mean_absolute_error, roc_curve
 
 def get_stats(res_df, actual='actual', pred='pred'):
-    res_df['acc'] = accuracy_score(y_true = res_df['actual'], y_pred=res_df['pred'])
-    acc = res_df['acc'].sum()/res_df.shape[0]
-
-    res_df['f1'] = f1_score(y_true = res_df['actual'], y_pred=res_df['pred'])
-    f1 = res_df['f1'].sum()/res_df.shape[0]
-
-    res_df['precision'] = precision_score(y_true = res_df['actual'], y_pred=res_df['pred'])
-    precision = res_df['precision'].sum()/res_df.shape[0]
-
-    res_df['recall'] = recall_score(y_true = res_df['actual'], y_pred=res_df['pred'])
-    recall = res_df['recall'].sum()/res_df.shape[0]
+    stats = {}
     
-    return acc, f1, precision, recall
+    res_df['accuracy'] = accuracy_score(y_true = res_df[actual], y_pred=res_df[pred])
+    stats['accuracy'] = res_df['accuracy'].sum()/res_df.shape[0]
 
-# credit to Lee Cai
-def tune_params(X, y, target_col, method):
+    res_df['f1'] = f1_score(y_true = res_df[actual], y_pred=res_df[pred])
+    stats['f1'] = res_df['f1'].sum()/res_df.shape[0]
+
+    res_df['precision'] = precision_score(y_true = res_df[actual], y_pred=res_df[pred])
+    stats['precision'] = res_df['precision'].sum()/res_df.shape[0]
+
+    res_df['recall'] = recall_score(y_true = res_df[actual], y_pred=res_df[pred])
+    stats['recall'] = res_df['recall'].sum()/res_df.shape[0]
+    
+    tpr, fpr, threshold = roc_curve(res_df[actual], res_df[pred])
+    stats.update({'tpr': tpr, 'fpr': fpr, 'threshold': threshold})
+    
+    return stats
+
+# credit to Lee Cai, who bootstrapped the original function in a diff project
+# Some modifications have been made to suit this project.
+def tune_params(X, y, ids, target_col, method):
     model = None
     
     if method == 'LogisticR':
@@ -35,26 +42,39 @@ def tune_params(X, y, target_col, method):
             'penalty':['l2'],
             'max_iter': [3000]
         }         
-        model = LogisticRegression()  
+        model = LogisticRegression(random_state=1008)  
     
     elif method == 'RF':
         param_grid = {
-            'n_estimators': [50,100,200,500],
-            'max_depth': [2,5,10],
+            'n_estimators': [50,100,250,500],
+            'max_depth': [2,5,10,25],
             'max_features': [round((X.shape[1] - 1) / 2), X.shape[1] - 1] 
         }
         model = RandomForestClassifier(oob_score=True,random_state=1008)
         
     elif method == 'XGB':
         param_grid={
-            'n_estimators': [50,100,200,500],
-            'max_depth': [3,6,9],
-            'min_child_weight': [1,3,6],
-            'learning_rate': [0.05,0.1,0.3,0.5]
+            'n_estimators': [50,100,250,500],
+            'max_depth': [3,5,8],
+            'min_child_weight': [1,3,5],
+            'learning_rate': [0.01,0.05,0.1,0.3]
         }
-        model = xgboost.XGBClassifier()
+        model = xgboost.XGBClassifier(random_state=1008)
     
-    grid = GridSearchCV(estimator=model,param_grid=param_grid, cv= 5, scoring='accuracy', n_jobs=4)
+    elif method == 'SVM':
+        param_grid = {
+            'C': [1, 10, 100, 1000], 
+            'gamma': [0.01, 0.001, 0.0001],
+            'kernel': ['rbf']
+        } 
+    
+    '''Leave one group out (LOGO) will function as our leave one subject out (LOSO) cross validation.
+       Participant IDs act as group labels. 
+       So, at each iteration, one "group" (i.e. one participant id)'s samples will be dropped.
+       Seems convoluded but works well.
+       '''
+    cv = LeaveOneGroupOut().split(X, y, ids)
+    grid = GridSearchCV(estimator=model,param_grid=param_grid, cv=cv, scoring='accuracy', n_jobs=4)
     grid_result = grid.fit(X,y)
     best_params = grid_result.best_params_        
     
@@ -65,9 +85,13 @@ def tune_params(X, y, target_col, method):
         return RandomForestClassifier(**best_params)
     elif method == 'XGB':
         return xgboost.XGBClassifier(**best_params)
+    elif method == 'SVM':
+        return SVC(**best_params)
      
 # Adapted from engagement study code - credit to Lee Cai, who co-authored the original code
-def predict(fs, n_lags):
+def predict(fs, n_lags, classifiers=None, optimize=True):
+    print('Now starting all prediction tasks for ' + str(n_lags) + ' lags...')
+    
     all_results = []
     
     # Split into inputs and labels
@@ -79,14 +103,14 @@ def predict(fs, n_lags):
     
     res = pd.DataFrame(y).rename(columns={fs.target_col: 'actual'})
     res['pred'] = np.random.randint(0,1, size=len(res))
-    acc, f1, precision, recall = get_stats(res, actual='actual', pred='pred')
+    stats = get_stats(res, actual='actual', pred='pred')
   
     # Make sure it's terrible :P 
-    if acc > 0.5:
+    if stats['accuracy'] > 0.5:
         print('Hmm...the random model did too well. Go back and check for errors in your data and labels.')  
         return None
     else:
-        print('Sanity check passed. Starting prediction tasks...')
+        print('Sanity check passed.')
     
         # Need to tune smote samples?
         print('Conducting upsampling with SMOTE...')
@@ -102,42 +126,63 @@ def predict(fs, n_lags):
         X = pd.DataFrame(X,columns=cols,dtype=float)
         X[fs.id_col] = X[fs.id_col].astype(str)
 
+        # Describe number of samples
+        n_samples = X.shape[0]
+        print('This featureset has ' + str(n_samples) + ' observations after upsampling using SMOTE.')
+        
         # Format y
         y = pd.Series(y)
 
         # Pull out the id column so we can do LOOCV in the next steps
         ids = X[fs.id_col]
         X = X[[col for col in X.columns if col != fs.id_col]]
-
-
-        for method in ['LogisticR', 'RF', 'XGB']:       
-            res = []
+        
+        # If no subset of classifiers is specified, run them all
+        if not classifiers:
+            classifiers = ['LogisticR', 'RF', 'XGB', 'SVM']
+        for method in classifiers:       
+            print('Now starting tasks for ' + method + 'classifier...')
+            
+            train_res = []
+            test_res = []
             list_shap_values = list()
             list_test_sets = list()
 
-            # Tune parameters
-            print('Tuning params with gridsearch...')
-            model = tune_params(X, y, fs.target_col, method)
-
-            print('Training and testing with ' + method + ' classifier')
-            
+            model = None
+            if optimize:
+                # Tune parameters
+                print('Tuning params with gridsearch...')
+                model = tune_params(X, y, ids, fs.target_col, method)
+            else:
+                print('Using default params...')
+                if method == 'LogisticR':
+                    model = LogisticRegression()
+                elif method == 'RF':
+                    model = RandomForestClassifier()
+                elif method == 'XGB':
+                    model = xgboost.XGBClassifier()
+                elif method == 'SVM':
+                    model = SVC()
+  
             # Get LOOCV train-test splits
-            '''Leave one group out (LOGO) will function as our leave one subject out (LOSO) cross validation.
-               Participant IDs act as group labels. '''
+            # Just as in tune_params function, we are using LOGO as our LOOCV implementation
             logo = LeaveOneGroupOut()
             
+            print('Training and testing...')
             for train_indices, test_indices in logo.split(X, y, ids):
                
                 X_train, y_train = X.loc[train_indices, :], y[train_indices]
                 X_test, y_test = X.loc[test_indices, :], y[test_indices]
 
                 model.fit(X_train,y_train)
+                
+                # Be sure to store the training results so we can ensure we aren't overfitting later
                 y_train_pred = model.predict(X_train)
                 y_test_pred = model.predict(X_test)
 
                 # Store results
-                df = pd.DataFrame({'pred':y_test_pred, 'actual':y_test})
-                res.append(df)
+                train_res.append(pd.DataFrame({'pred': y_train_pred, 'actual': y_train}))
+                test_res.append(pd.DataFrame({'pred': y_test_pred, 'actual':y_test}))
 
                 if method != 'LogisticR':
                     shap_values = shap.TreeExplainer(model).shap_values(X_test)
@@ -145,6 +190,7 @@ def predict(fs, n_lags):
                     list_test_sets.append(test_indices)
                     
             if method != 'LogisticR':
+                print('Calculating SHAP stats...')
                 # TODO - bring this back so we can track shap vals
                 # https://lucasramos-34338.medium.com/visualizing-variable-importance-using-shap-and-cross-validation-bd5075e9063a
 
@@ -171,16 +217,26 @@ def predict(fs, n_lags):
                 with open('feature_importance/shap_' + method + '_' + str(n_lags) + '_lags.ob', 'wb') as fp:
                     pickle.dump(shap_values, fp)
 
-            # Save all relevant stats
-            res_df = pd.concat(res,copy=True)
-            acc, f1, precision, recall = get_stats(res_df, actual='actual', pred='pred')
+            # Save all relevant stats       
+            print('Calculating performance metrics...')
+     
+            train_res_df = pd.concat(train_res,copy=True)
+            test_res_df = pd.concat(test_res,copy=True)
         
-            all_results.append(
-                {
-                    'n_lags': n_lags, 'featureset': fs.name, 'method': method,'target': fs.target_col,
-                    'accuracy':acc, 'f1_score': f1, 'precision': precision, 'recall': recall
-                }
-            )
+            # Get train and test results as separate dictionaries
+            train_res = get_stats(train_res_df)
+            test_res = get_stats(test_res_df)
+            
+            # Create a combined results dictionary
+            train_test_res = {'test_' + str(k): v for k, v in test_res.items()}
+            
+            # Add only the accuracy from the training results
+            train_test_res['train_accuracy'] = train_res['accuracy']
+        
+            # Add remaining info 
+            train_test_res.update({'n_lags': n_lags, 'featureset': fs.name, 'n_samples': n_samples,
+                                   'method': method,'target': fs.target_col})
+            all_results.append(train_test_res)
 
         return pd.DataFrame(all_results)
 
