@@ -100,8 +100,6 @@ def tune_params(X, y, ids, target_col, method):
      
 # Adapted from engagement study code - credit to Lee Cai, who co-authored the original code
 def predict(fs, n_lags, classifiers=None, optimize=True):
-    print('Now starting all prediction tasks for ' + str(n_lags) + ' lags...')
-    
     all_results = []
     
     # Split into inputs and labels
@@ -151,8 +149,6 @@ def predict(fs, n_lags, classifiers=None, optimize=True):
         if not classifiers:
             classifiers = ['LogisticR', 'RF', 'XGB', 'SVM']
         for method in classifiers:       
-            print('Now starting tasks for ' + method + 'classifier...')
-            
             train_res = []
             test_res = []
             list_shap_values = list()
@@ -168,7 +164,7 @@ def predict(fs, n_lags, classifiers=None, optimize=True):
                 if method == 'LogisticR':
                     model = LogisticRegression()
                 elif method == 'RF':
-                    model = RandomForestClassifier()
+                    model = RandomForestClassifier(max_depth=5)
                 elif method == 'XGB':
                     model = xgboost.XGBClassifier()
                 elif method == 'SVM':
