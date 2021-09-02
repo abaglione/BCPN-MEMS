@@ -77,14 +77,16 @@ def tune_params(X, y, ids, target_col, method):
             'gamma': [0.01, 0.001, 0.0001],
             'kernel': ['rbf']
         } 
+        model = SVC(random_state=1008)
     
     '''Leave one group out (LOGO) will function as our leave one subject out (LOSO) cross validation.
        Participant IDs act as group labels. 
        So, at each iteration, one "group" (i.e. one participant id)'s samples will be dropped.
        Seems convoluded but works well.
        '''
-    cv = LeaveOneGroupOut().split(X, y, ids)
-    grid = GridSearchCV(estimator=model,param_grid=param_grid, cv=cv, scoring='accuracy', n_jobs=4)
+#     cv = LeaveOneGroupOut().split(X, y, ids)
+#     grid = GridSearchCV(estimator=model,param_grid=param_grid, cv=cv, scoring='accuracy')
+    grid = GridSearchCV(estimator=model,param_grid=param_grid, cv=5, scoring='accuracy')
     grid_result = grid.fit(X,y)
     best_params = grid_result.best_params_        
     
@@ -174,7 +176,7 @@ def predict(fs, n_lags, classifiers=None, optimize=True):
             # Just as in tune_params function, we are using LOGO as our LOOCV implementation
             logo = LeaveOneGroupOut()
             
-            print('Training and testing...')
+            print('Training and testing with ' + method + ' model...')
             for train_indices, test_indices in logo.split(X, y, ids):
                
                 X_train, y_train = X.loc[train_indices, :], y[train_indices]
@@ -191,12 +193,16 @@ def predict(fs, n_lags, classifiers=None, optimize=True):
                 test_res.append(pd.DataFrame({'pred': y_test_pred, 'actual':y_test}))
 
                 if method != 'LogisticR':
-                    shap_values = shap.TreeExplainer(model).shap_values(X_test)
+                    if method == 'RF' or method == 'XGB':
+                        shap_values = shap.TreeExplainer(model).shap_values(X_test)
+                    elif method == 'SVM':
+                        shap_values = shap.KernelExplainer(model.predict, X_test).shap_values(X_test)
+
                     list_shap_values.append(shap_values)
                     list_test_sets.append(test_indices)
-                    
+
             if method != 'LogisticR':
-                print('Calculating SHAP stats...')
+                print('Saving SHAP stats...')
                 # TODO - bring this back so we can track shap vals
                 # https://lucasramos-34338.medium.com/visualizing-variable-importance-using-shap-and-cross-validation-bd5075e9063a
 
@@ -224,7 +230,7 @@ def predict(fs, n_lags, classifiers=None, optimize=True):
                     pickle.dump(shap_values, fp)
 
             # Save all relevant stats       
-            print('Calculating performance metrics...')
+            print('Calculating and saving performance metrics...')
      
             train_res_df = pd.concat(train_res,copy=True)
             test_res_df = pd.concat(test_res,copy=True)
