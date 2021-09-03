@@ -1,2 +1,6 @@
 # bcpn_mems
-Repo for analysis of BCPN of MEMS data from Kristen Wells (SDSU)
+## Anna's Thesis Analysis
+
+Repo for analysis of BCPN study (MEMS + self-report data).
+
+Dataset used with permission granted by Dr. Kristen Wells (SDSU).
