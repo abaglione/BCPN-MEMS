@@ -3,11 +3,12 @@ import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
 
 class Featureset:
-    def __init__(self, df, name, id_col, target_col=None):
+    def __init__(self, df, name, id_col, target_col=None, epoch=None):
         self.df = df
         self.name = name
         self.id_col = id_col
         self.target_col = target_col
+        self.epoch = epoch
         self.num_feats = self.df.shape[1] - 2 # Exclude id column and target column
         self.num_obs = self.df.shape[0]
         
@@ -29,7 +30,7 @@ class Featureset:
         to_scale = [col for col in self.df.columns if col != self.id_col and col != self.target_col]
         self.df[to_scale] = scaler.fit_transform(self.df[to_scale]) 
         
-    def get_lagged_featureset(self, epoch, n_lags):
+    def get_lagged_featureset(self, n_lags):
         '''Generate lagged observations for temporal data, for each subject '''
 
         rows = []
@@ -40,11 +41,11 @@ class Featureset:
             subset = self.df[self.df[self.id_col] == unique_id]
 
             # Sort by epoch
-            subset.sort_values(by=epoch, ascending=True)
+            subset.sort_values(by=self.epoch, ascending=True)
 
             # Get features as supervised learning df
             # Temporal features will be lagged by a window of size 3
-            agg = series_to_supervised(subset.iloc[:, 1:], time_col = epoch, target_col = self.target_col, 
+            agg = series_to_supervised(subset.iloc[:, 1:], time_col = self.epoch, target_col = self.target_col, 
                                        n_in=n_lags, n_out=1) 
 
             # Be sure to add the unique id column back in, at the very beginning
@@ -58,12 +59,18 @@ class Featureset:
 
         return Featureset(df=res, name=self.name, id_col=self.id_col, target_col=self.target_col)
             
-    def __repr__(self):       
-        return '\n'.join([
+    def __repr__(self):    
+        rep = '\n'.join([
             f'Name: { self.name }',
             f'Number of features: {self.num_feats}', 
-            f'Number of observations: {self.num_obs}' 
+            f'Number of observations: {self.num_obs}'
         ])
+        
+        if self.epoch:
+            print(self.epoch)
+            rep = rep + f'\nEpoch: { self.epoch }'
+        
+        return rep
         
 def series_to_supervised(df, time_col, target_col, n_in=1, n_out=1, dropnan=True):
     """

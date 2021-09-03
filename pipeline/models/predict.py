@@ -56,25 +56,25 @@ def tune_params(X, y, ids, target_col, method):
     
     elif method == 'RF':
         param_grid = {
-            'n_estimators': [50,100,250,500],
+            'n_estimators': [50,100,250],
             'max_depth': [2,5,10,25],
-            'max_features': [round((X.shape[1] - 1) / 2), X.shape[1] - 1] 
+            'max_features': ['auto', 'sqrt', 'log2'] 
         }
         model = RandomForestClassifier(oob_score=True,random_state=1008)
         
     elif method == 'XGB':
         param_grid={
-            'n_estimators': [50,100,250,500],
-            'max_depth': [3,5,8],
-            'min_child_weight': [1,3,5],
-            'learning_rate': [0.01,0.05,0.1,0.3]
+            'n_estimators': [50,100,250],
+            'max_depth': [3,5],
+            'min_child_weight': [1,3],
+            'learning_rate': [0.05,0.1,0.15]
         }
         model = xgboost.XGBClassifier(random_state=1008)
     
     elif method == 'SVM':
         param_grid = {
-            'C': [1, 10, 100, 1000], 
-            'gamma': [0.01, 0.001, 0.0001],
+            'C': [1, 10], 
+            'gamma': ['scale', 'auto'],
             'kernel': ['rbf']
         } 
         model = SVC(random_state=1008)
@@ -101,7 +101,7 @@ def tune_params(X, y, ids, target_col, method):
         return SVC(**best_params)
      
 # Adapted from engagement study code - credit to Lee Cai, who co-authored the original code
-def predict(fs, n_lags, classifiers=None, optimize=True):
+def predict(fs, n_lags, classifiers=None, optimize=True, importance=True):
     all_results = []
     
     # Split into inputs and labels
@@ -192,7 +192,7 @@ def predict(fs, n_lags, classifiers=None, optimize=True):
                 train_res.append(pd.DataFrame({'pred': y_train_pred, 'actual': y_train}))
                 test_res.append(pd.DataFrame({'pred': y_test_pred, 'actual':y_test}))
 
-                if method != 'LogisticR':
+                if importance and method != 'LogisticR':
                     if method == 'RF' or method == 'XGB':
                         shap_values = shap.TreeExplainer(model).shap_values(X_test)
                     elif method == 'SVM':
@@ -201,7 +201,7 @@ def predict(fs, n_lags, classifiers=None, optimize=True):
                     list_shap_values.append(shap_values)
                     list_test_sets.append(test_indices)
 
-            if method != 'LogisticR':
+            if importance and method != 'LogisticR':
                 print('Saving SHAP stats...')
                 # TODO - bring this back so we can track shap vals
                 # https://lucasramos-34338.medium.com/visualizing-variable-importance-using-shap-and-cross-validation-bd5075e9063a

@@ -99,7 +99,7 @@ class Dataset:
                 self.feature_categories[category] = list(set(cols))
             else:
                 self.feature_categories[category] = list(set(self.feature_categories[category] + cols))
-    
+                
     def build_df_from_feature_categories(self, categories='all'):
         if categories == 'all':
             return self.df[[self.id_col] +\
