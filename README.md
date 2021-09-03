@@ -1,5 +1,5 @@
 # bcpn_mems
-## Anna's Thesis Analysis
+## Anna's Thesis Analysis (In Development)
 
 Repo for analysis of BCPN study (MEMS + self-report data).
 
