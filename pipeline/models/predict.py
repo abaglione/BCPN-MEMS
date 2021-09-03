@@ -101,7 +101,7 @@ def tune_params(X, y, ids, target_col, method):
         return SVC(**best_params)
      
 # Adapted from engagement study code - credit to Lee Cai, who co-authored the original code
-def predict(fs, n_lags, classifiers=None, optimize=True, importance=True):
+def predict(fs, n_lags, classifiers=None, tune=True, importance=True):
     all_results = []
     
     # Split into inputs and labels
@@ -157,7 +157,7 @@ def predict(fs, n_lags, classifiers=None, optimize=True, importance=True):
             list_test_sets = list()
 
             model = None
-            if optimize:
+            if tune:
                 # Tune parameters
                 print('Tuning params with gridsearch...')
                 model = tune_params(X, y, ids, fs.target_col, method)
@@ -223,10 +223,18 @@ def predict(fs, n_lags, classifiers=None, optimize=True, importance=True):
                 X_test = pd.DataFrame(X.iloc[test_set],columns=X.columns)
 
                 # Save the shap info
-                with open('feature_importance/X_test_' + method + '_' + str(n_lags) + '_lags.ob', 'wb') as fp:
+                filename = 'feature_importance/X_test_' + method + '_' + str(n_lags) + '_lags'
+                if tune:
+                    filename += '_tuned'
+                filename += '.ob'
+                with open(filename, 'wb') as fp:
                     pickle.dump(X_test, fp)
 
-                with open('feature_importance/shap_' + method + '_' + str(n_lags) + '_lags.ob', 'wb') as fp:
+                filename = 'feature_importance/shap_' + method + '_' + str(n_lags) + '_lags'
+                if tune:
+                    filename += '_tuned'
+                filename += '.ob'
+                with open(filename, 'wb') as fp:
                     pickle.dump(shap_values, fp)
 
             # Save all relevant stats       
@@ -247,7 +255,7 @@ def predict(fs, n_lags, classifiers=None, optimize=True, importance=True):
         
             # Add remaining info 
             train_test_res.update({'n_lags': n_lags, 'featureset': fs.name, 'n_samples': n_samples,
-                                   'method': method,'target': fs.target_col})
+                                   'method': method, 'tuned': tune, 'target': fs.target_col})
             
             all_results.append(train_test_res)
         
