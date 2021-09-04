@@ -11,6 +11,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import SVC
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, mean_absolute_error, roc_curve, confusion_matrix
+from sklearn.pipeline import Pipeline
 import matplotlib.pyplot as plt
 
 def get_stats(df, actual='actual', pred='pred', labels=[0,1]):
@@ -35,7 +36,7 @@ def get_stats(df, actual='actual', pred='pred', labels=[0,1]):
     
     return stats
 
-def gather_shap(list_shap_values, list_test_sets, X, method, n_lags, tune):
+def gather_shap(list_shap_values, list_test_sets, X, method, n_lags, optimize):
     print('Saving SHAP stats...')
     # TODO - bring this back so we can track shap vals
     # https://lucasramos-34338.medium.com/visualizing-variable-importance-using-shap-and-cross-validation-bd5075e9063a
@@ -58,15 +59,15 @@ def gather_shap(list_shap_values, list_test_sets, X, method, n_lags, tune):
 
     # Save the shap info
     filename = 'feature_importance/X_test_' + method + '_' + str(n_lags) + '_lags'
-    if tune:
-        filename += '_tuned'
+    if optimize:
+        filename += '_optimized'
     filename += '.ob'
     with open(filename, 'wb') as fp:
         pickle.dump(X_test, fp)
 
     filename = 'feature_importance/shap_' + method + '_' + str(n_lags) + '_lags'
-    if tune:
-        filename += '_tuned'
+    if optimize:
+        filename += '_optimized'
     filename += '.ob'
     with open(filename, 'wb') as fp:
         pickle.dump(shap_values, fp)
@@ -74,61 +75,51 @@ def gather_shap(list_shap_values, list_test_sets, X, method, n_lags, tune):
 
 # credit to Lee Cai, who bootstrapped the original function in a diff project
 # Some modifications have been made to suit this project.
-def tune_params(X, y, ids, target_col, method):
+def optimize_params(X, y, ids, target_col, method):
     model = None
     
     if method == 'LogisticR':
         param_grid={
-            'estimator__C': np.logspace(-4, 4, 20), 
-            'estimator__penalty':['l2'],
-            'estimator__max_iter': [3000]
+            'C': np.logspace(-4, 4, 20), 
+            'penalty':['l2'],
+            'max_iter': [3000]
         }         
         model = LogisticRegression(random_state=1008)  
     
     elif method == 'RF':
         param_grid = {
-            'estimator__n_estimators': [50,100,250],
-            'estimator__max_depth': [2,5,10,25],
-            'estimator__max_features': ['auto', 'sqrt', 'log2'] 
+            'n_estimators': [50,100,250],
+            'max_depth': [2,5,10,25],
+            'max_features': ['auto', 'sqrt', 'log2'] 
         }
         model = RandomForestClassifier(oob_score=True,random_state=1008)
         
     elif method == 'XGB':
         param_grid={
-            'estimator__n_estimators': [50,100,250],
-            'estimator__max_depth': [3,5],
-            'estimator__min_child_weight': [1,3],
-            'estimator__learning_rate': [0.05,0.1,0.15]
+            'n_estimators': [50,100,250],
+            'max_depth': [3,5],
+            'min_child_weight': [1,3],
+            'learning_rate': [0.05,0.1,0.15]
         }
         model = xgboost.XGBClassifier(random_state=1008)
     
     elif method == 'SVM':
         param_grid = {
-            'estimator__C': [1, 10], 
-            'estimator__gamma': ['scale', 'auto'],
-            'estimator__kernel': ['rbf']
+            'C': [1, 10], 
+            'gamma': ['scale', 'auto'],
+            'kernel': ['rbf']
         } 
         model = SVC(random_state=1008)
     
-    # Recursively select features
-    selector = RFECV(model, step=1, cv=5)
+    # Get RFE and gridsearch objects
     
-    # Do gridsearch
-    grid = GridSearchCV(estimator=selector,param_grid=param_grid, cv=5, scoring='accuracy')
-    grid_result = grid.fit(X,y)
-    best_params = grid_result.best_params_        
+    rfe = RFECV(model, step=1, cv=5)
+    grid = GridSearchCV(estimator=model,param_grid=param_grid, cv=5, scoring='accuracy')
     
-    # Return the final model
-    if method == 'LogisticR':
-        return LogisticRegression(**best_params)
-    elif method == 'RF':
-        return RandomForestClassifier(**best_params)
-    elif method == 'XGB':
-        return xgboost.XGBClassifier(**best_params)
-    elif method == 'SVM':
-        return SVC(**best_params)
-
-def train_test(X, y, ids, model, method, importance):
+    return Pipeline([('feature_selection',rfe),
+                     ('clf',grid)])
+        
+def train_test(X, y, ids, pipeline, method, importance):
     train_res = []
     test_res = []
     list_shap_values = list()
@@ -147,11 +138,11 @@ def train_test(X, y, ids, model, method, importance):
         X_train, y_train = X.loc[train_indices, :], y[train_indices]
         X_test, y_test = X.loc[test_indices, :], y[test_indices]
 
-        model.fit(X_train,y_train)
+        pipeline.fit(X_train,y_train)
         
         # Be sure to store the training results so we can ensure we aren't overfitting later
-        y_train_pred = model.predict(X_train)
-        y_test_pred = model.predict(X_test)
+        y_train_pred = pipeline.predict(X_train)
+        y_test_pred = pipeline.predict(X_test)
 
         # Store results
         train_res.append(pd.DataFrame({'pred': y_train_pred, 'actual': y_train}))
@@ -160,9 +151,9 @@ def train_test(X, y, ids, model, method, importance):
         # Calculate feature importance while we're here
         if importance and method != 'LogisticR':
             if method == 'RF' or method == 'XGB':
-                shap_values = shap.TreeExplainer(model).shap_values(X_test)
+                shap_values = shap.TreeExplainer(pipeline['clf']).shap_values(X_test)
             elif method == 'SVM':
-                shap_values = shap.KernelExplainer(model.predict, X_test).shap_values(X_test)
+                shap_values = shap.KernelExplainer(pipeline['clf'].predict, X_test).shap_values(X_test)
 
             list_shap_values.append(shap_values)
             list_test_sets.append(test_indices)
@@ -170,7 +161,7 @@ def train_test(X, y, ids, model, method, importance):
     return train_res, test_res, list_shap_values, list_test_sets
      
 # Adapted from engagement study code - credit to Lee Cai, who co-authored the original code
-def predict(fs, n_lags, classifiers=None, tune=True, importance=True):
+def predict(fs, n_lags, classifiers=None, optimize=True, importance=True):
     all_results = []
     
     # Split into inputs and labels
@@ -216,11 +207,10 @@ def predict(fs, n_lags, classifiers=None, tune=True, importance=True):
         if not classifiers:
             classifiers = ['LogisticR', 'RF', 'XGB', 'SVM']
         for method in classifiers:       
-            model = None
-            if tune:
-                # Tune parameters
-                print('Tuning params with gridsearch...')
-                model = tune_params(X, y, ids, fs.target_col, method)
+            pipeline = None
+            if optimize:
+                # optimize parameters
+                pipeline = optimize_params(X, y, ids, fs.target_col, method)
             else:
                 print('Using default params...')
                 if method == 'LogisticR':
@@ -231,11 +221,13 @@ def predict(fs, n_lags, classifiers=None, tune=True, importance=True):
                     model = xgboost.XGBClassifier()
                 elif method == 'SVM':
                     model = SVC()
+                
+                pipeline = Pipeline(['clf', model])
   
-            train_res, test_res, list_shap_values, list_test_sets = train_test(X, y, ids, model, method, importance)
+            train_res, test_res, list_shap_values, list_test_sets = train_test(X, y, ids, pipeline, method, importance)
         
             if importance and method != 'LogisticR':
-                gather_shap(list_shap_values, list_test_sets, X, method, n_lags, tune)
+                gather_shap(list_shap_values, list_test_sets, X, method, n_lags, optimize)
 
             # Save all relevant stats       
             print('Calculating and saving performance metrics...')
@@ -256,7 +248,7 @@ def predict(fs, n_lags, classifiers=None, tune=True, importance=True):
         
             # Add remaining info 
             train_test_res.update({'n_lags': n_lags, 'featureset': fs.name, 'n_samples': X.shape[0],
-                                   'method': method, 'tuned': tune, 'target': fs.target_col})
+                                   'method': method, 'optimized': optimize, 'target': fs.target_col})
             
             all_results.append(train_test_res)
         
