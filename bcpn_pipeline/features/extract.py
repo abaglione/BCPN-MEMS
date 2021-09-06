@@ -93,8 +93,10 @@ def get_epochs(df, start_date_col, pid_col, time_of_day_bins=None, time_of_day_l
     if time_of_day_bins:
         df['time_of_day'] = pd.cut(df['datetime'].dt.hour, time_of_day_bins, labels=time_of_day_labels)
     
-    df['weekday'] = df['datetime'].dt.day_name() # e.g., "Monday"
-    
+    df['is_weekday'] = df['datetime'].apply(
+        lambda x: 1 if x.day_name() != "Saturday" and x.day_name() != "Sunday" else 0
+    )
+                                           
     df['study_day'] = (df['datetime'] - df[start_date_col]).dt.days
     df['study_week'] = np.floor((df['datetime']- df[start_date_col]).dt.days / 7.0)
     
@@ -107,8 +109,8 @@ def calc_standard_static_metrics(df, cols, col_prefix):
     
     df[col_prefix + 'mean'] = df[cols].mean(axis=1)
     df[col_prefix + 'std'] = df[cols].std(axis=1)
-    df[col_prefix + 'min'] = df[cols].min(axis=1)
-    df[col_prefix + 'max'] = df[cols].max(axis=1)
+#     df[col_prefix + 'min'] = df[cols].min(axis=1)
+#     df[col_prefix + 'max'] = df[cols].max(axis=1)
     
     newcols = [col_prefix + metric for metric in ['mean', 'std', 'min', 'max']]
     return df, newcols
@@ -124,26 +126,12 @@ def calc_standard_temporal_metrics(df, groupby_cols, datetime_col):
         'event_time_std': lambda x: np.floor(
             x.dt.hour.std()
         ),
-        'event_time_min': lambda x: np.floor(
-            x.dt.hour.min()
+        'between_event_time_mean': lambda x: np.floor(
+            abs(x.diff().mean().total_seconds() / SECONDS_IN_HOUR)
         ),
-        'event_time_max': lambda x: np.floor(
-            x.dt.hour.max()
-        ),
-        # Shouldn't be using these - they directly relate to the definition of adherence!
-        # i.e., within range
-#         'between_event_time_mean': lambda x: np.floor(
-#             abs(x.diff().mean().total_seconds() / SECONDS_IN_HOUR)
-#         ),
-#         'between_event_time_std': lambda x: np.floor(
-#             x.diff().std().total_seconds() / SECONDS_IN_HOUR
-#         ),
-#         'between_event_time_min': lambda x: np.floor(
-#             x.diff().min().total_seconds() / SECONDS_IN_HOUR
-#         ),
-#         'between_event_time_max': lambda x: np.floor(
-#             x.diff().max().total_seconds() / SECONDS_IN_HOUR
-#         )
+        'between_event_time_std': lambda x: np.floor(
+            x.diff().std().total_seconds() / SECONDS_IN_HOUR
+        )
     }).reset_index()
     return res
     

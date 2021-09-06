@@ -115,10 +115,6 @@ def series_to_supervised(df, time_col, target_col, n_in=1, n_out=1, dropnan=True
     # Drop all time columns (e.g. 'study_week')
     agg.drop(columns = [col for col in agg.columns if time_col in col], inplace=True)
     
-    ''' For the target column (the value we want to predict) retain only the observations at time t onwards, 
-    since we don't want these as input features '''
-    agg.drop(columns = [col for col in agg.columns if target_col in col][:n_in], inplace=True)
-    
     ''' For the all other columns (the value we want to predict) retain only the observations 
     before time t'''
     agg.drop(columns = [col for col in agg.columns if '(t-' not in col 

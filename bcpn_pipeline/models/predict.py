@@ -75,7 +75,7 @@ def gather_shap(list_shap_values, list_test_sets, X, method, n_lags, optimize):
 
 # credit to Lee Cai, who bootstrapped the original function in a diff project
 # Some modifications have been made to suit this project.
-def optimize_params(X, y, ids, target_col, method):
+def optimize_params(X, y, ids, target_col, num_feats, method):
     model = None
     
     if method == 'LogisticR':
@@ -113,11 +113,15 @@ def optimize_params(X, y, ids, target_col, method):
     
     # Get RFE and gridsearch objects
     
-    rfe = RFECV(model, step=1, cv=5)
+    step = 5
+    if num_feats > 10:
+        step = 30
+        
+    rfe = RFECV(model, step=step, cv=5)
     grid = GridSearchCV(estimator=model,param_grid=param_grid, cv=5, scoring='accuracy')
     
     return Pipeline([('feature_selection',rfe),
-                     ('clf',grid)])
+                     ('clf_cv',grid)])
         
 def train_test(X, y, ids, pipeline, method, importance):
     train_res = []
@@ -150,10 +154,16 @@ def train_test(X, y, ids, pipeline, method, importance):
 
         # Calculate feature importance while we're here
         if importance and method != 'LogisticR':
+            model = None
+            if 'clf_cv' in pipeline.named_steps:
+                model = pipeline.named_steps['clf_cv'].best_estimator_
+            else:
+                model = pipeline.named_steps['clf']
+            
             if method == 'RF' or method == 'XGB':
-                shap_values = shap.TreeExplainer(pipeline['clf']).shap_values(X_test)
+                shap_values = shap.TreeExplainer(model).shap_values(X_test)
             elif method == 'SVM':
-                shap_values = shap.KernelExplainer(pipeline['clf'].predict, X_test).shap_values(X_test)
+                shap_values = shap.KernelExplainer(model.predict, X_test).shap_values(X_test)
 
             list_shap_values.append(shap_values)
             list_test_sets.append(test_indices)
@@ -210,8 +220,9 @@ def predict(fs, n_lags, classifiers=None, optimize=True, importance=True):
             pipeline = None
             if optimize:
                 # optimize parameters
-                pipeline = optimize_params(X, y, ids, fs.target_col, method)
+                pipeline = optimize_params(X, y, ids, fs.target_col, fs.num_feats, method)
             else:
+                model = None
                 print('Using default params...')
                 if method == 'LogisticR':
                     model = LogisticRegression()
@@ -222,7 +233,7 @@ def predict(fs, n_lags, classifiers=None, optimize=True, importance=True):
                 elif method == 'SVM':
                     model = SVC()
                 
-                pipeline = Pipeline(['clf', model])
+                pipeline = Pipeline([('clf', model)])
   
             train_res, test_res, list_shap_values, list_test_sets = train_test(X, y, ids, pipeline, method, importance)
         
