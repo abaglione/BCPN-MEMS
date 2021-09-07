@@ -1,6 +1,8 @@
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
+from sklearn.experimental import enable_iterative_imputer
+from sklearn.impute import IterativeImputer
 
 class Featureset:
     def __init__(self, df, name, id_col, target_col=None, epoch=None):
@@ -9,15 +11,23 @@ class Featureset:
         self.id_col = id_col
         self.target_col = target_col
         self.epoch = epoch
-        self.num_feats = self.df.shape[1] - 2 # Exclude id column and target column
-        self.num_obs = self.df.shape[0]
         
     def create_combined_featureset(self, fs):
         # Assumes they have the same id_col
         df = self.df.merge(fs.df, on=[self.id_col])
         return Featureset(df=df, name=self.name + ' - ' + fs.name, id_col=self.id_col, target_col=self.target_col)
-    
-    def prep_for_modeling(self):
+        
+    def transform(self):
+        
+        # Impute numerics and categoricals
+        categoricals = self.df.select_dtypes('category')
+        for col in categoricals.columns:
+            self.df[col].fillna(self.df[col].mode()[0], inplace=True)
+        
+        imputer = IterativeImputer(random_state=5)
+        numerics = list(set(list(self.df.select_dtypes('number').columns)) -\
+                        set([self.id_col]))
+        self.df[numerics] = imputer.fit_transform(self.df[numerics])
 
         # One-hot encode categoricals
         self.df = pd.get_dummies(self.df, columns=self.df.select_dtypes('category').columns)
@@ -29,10 +39,9 @@ class Featureset:
         scaler = MinMaxScaler(feature_range=(0, 1))
         to_scale = [col for col in self.df.columns if col != self.id_col and col != self.target_col]
         self.df[to_scale] = scaler.fit_transform(self.df[to_scale]) 
-        
+ 
     def get_lagged_featureset(self, n_lags):
         '''Generate lagged observations for temporal data, for each subject '''
-
         rows = []
 
         for unique_id in self.df[self.id_col].unique(): 
@@ -58,12 +67,41 @@ class Featureset:
         res = pd.concat(rows, axis=0)
 
         return Featureset(df=res, name=self.name, id_col=self.id_col, target_col=self.target_col)
+    
+    def handle_multicollinearity(self):
+        corr_matrix = self.df.corr()
+
+        # --- Credit to Chris Albon ---
+        # https://chrisalbon.com/code/machine_learning/feature_selection/drop_highly_correlated_features/
+
+        # Select upper triangle of correlation matrix
+        upper = corr_matrix.where(np.triu(np.ones(corr_matrix.shape), k=1).astype(np.bool))
+
+        # Find index of feature columns with correlation greater than 0.85
+        to_drop = [column for column in upper.columns if any(upper[column] > 0.85)]
+        
+        if len(to_drop) > 0:
+            self.df.drop(columns=to_drop, axis=1, inplace=True)
+    
+    def prep_for_modeling(self, n_lags=None):
+        
+        # Transform current featureset
+        self.transform()
+        
+        # If this is a temporal fs
+        if self.epoch:
+            if n_lags:
+                # Get new, lagged featureset
+                fs = self.get_lagged_featureset(n_lags)
+                return fs
+            else:
+                raise ValueError("Mandatory parameter n_lags not provided")
             
     def __repr__(self):    
         rep = '\n'.join([
             f'Name: { self.name }',
-            f'Number of features: {self.num_feats}', 
-            f'Number of observations: {self.num_obs}'
+            f'Number of features: {self.df.shape[1] - 2}', 
+            f'Number of observations: {self.df.shape[0]}'
         ])
         
         if self.epoch:

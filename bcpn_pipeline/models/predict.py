@@ -4,7 +4,7 @@ from imblearn.over_sampling import SMOTE
 import shap
 import pickle
 import xgboost
-from sklearn.feature_selection import RFECV
+from sklearn.feature_selection import RFE
 from sklearn.model_selection import GridSearchCV
 from sklearn.model_selection import LeaveOneGroupOut
 from sklearn.linear_model import LogisticRegression
@@ -75,7 +75,7 @@ def gather_shap(list_shap_values, list_test_sets, X, method, n_lags, optimize):
 
 # credit to Lee Cai, who bootstrapped the original function in a diff project
 # Some modifications have been made to suit this project.
-def optimize_params(X, y, ids, target_col, num_feats, method):
+def optimize_params(X, y, ids, target_col, method):
     model = None
     
     if method == 'LogisticR':
@@ -90,7 +90,6 @@ def optimize_params(X, y, ids, target_col, num_feats, method):
         param_grid = {
             'n_estimators': [50,100,250],
             'max_depth': [2,5,10,25],
-            'max_features': ['auto', 'sqrt', 'log2'] 
         }
         model = RandomForestClassifier(oob_score=True,random_state=1008)
         
@@ -111,19 +110,21 @@ def optimize_params(X, y, ids, target_col, num_feats, method):
         } 
         model = SVC(random_state=1008)
     
-    # Get RFE and gridsearch objects
+    final_param_grid = {'estimator__' + k:v for k, v in param_grid.items()}
+    print(final_param_grid)
     
+    # Get RFE and gridsearch objects
     step = 5
-    if num_feats > 10:
+    if X.shape[1] > 10:
         step = 30
         
-    rfe = RFECV(model, step=step, cv=5)
-    grid = GridSearchCV(estimator=model,param_grid=param_grid, cv=5, scoring='accuracy')
+    rfe = RFE(model, step=step, verbose=3)
+    grid = GridSearchCV(estimator=rfe, param_grid=final_param_grid, cv=5, scoring='accuracy', verbose=3)
+    grid.fit(X,y)
     
-    return Pipeline([('feature_selection',rfe),
-                     ('clf_cv',grid)])
+    return grid.best_estimator_
         
-def train_test(X, y, ids, pipeline, method, importance):
+def train_test(X, y, ids, model, method, importance):
     train_res = []
     test_res = []
     list_shap_values = list()
@@ -142,11 +143,11 @@ def train_test(X, y, ids, pipeline, method, importance):
         X_train, y_train = X.loc[train_indices, :], y[train_indices]
         X_test, y_test = X.loc[test_indices, :], y[test_indices]
 
-        pipeline.fit(X_train,y_train)
+        model.fit(X_train,y_train)
         
         # Be sure to store the training results so we can ensure we aren't overfitting later
-        y_train_pred = pipeline.predict(X_train)
-        y_test_pred = pipeline.predict(X_test)
+        y_train_pred = model.predict(X_train)
+        y_test_pred = model.predict(X_test)
 
         # Store results
         train_res.append(pd.DataFrame({'pred': y_train_pred, 'actual': y_train}))
@@ -154,11 +155,6 @@ def train_test(X, y, ids, pipeline, method, importance):
 
         # Calculate feature importance while we're here
         if importance and method != 'LogisticR':
-            model = None
-            if 'clf_cv' in pipeline.named_steps:
-                model = pipeline.named_steps['clf_cv'].best_estimator_
-            else:
-                model = pipeline.named_steps['clf']
             
             if method == 'RF' or method == 'XGB':
                 shap_values = shap.TreeExplainer(model).shap_values(X_test)
@@ -219,8 +215,12 @@ def predict(fs, n_lags, classifiers=None, optimize=True, importance=True):
         for method in classifiers:       
             pipeline = None
             if optimize:
-                # optimize parameters
-                pipeline = optimize_params(X, y, ids, fs.target_col, fs.num_feats, method)
+                # Get the best model and only the selected features
+                model = optimize_params(X, y, ids, fs.target_col, method)
+                
+                print('N feats before RFE: ' + X.shape[1])
+                X = X.loc[:, model.get_support()]
+                print('N feats after RFE: ' + X.shape[1])
             else:
                 model = None
                 print('Using default params...')
@@ -235,7 +235,7 @@ def predict(fs, n_lags, classifiers=None, optimize=True, importance=True):
                 
                 pipeline = Pipeline([('clf', model)])
   
-            train_res, test_res, list_shap_values, list_test_sets = train_test(X, y, ids, pipeline, method, importance)
+            train_res, test_res, list_shap_values, list_test_sets = train_test(X, y, ids, model, method, importance)
         
             if importance and method != 'LogisticR':
                 gather_shap(list_shap_values, list_test_sets, X, method, n_lags, optimize)
