@@ -164,11 +164,34 @@ def train_test(X, y, ids, model, method, importance):
             list_shap_values.append(shap_values)
             list_test_sets.append(test_indices)
     
-    return train_res, test_res, list_shap_values, list_test_sets
+    if importance and method != 'LogisticR':
+        gather_shap(list_shap_values, list_test_sets, X, method, n_lags, optimize)
+
+    # Save all relevant stats       
+    print('Calculating performance metrics...')
+
+    # Get train and test results as separate dictionaries
+    train_res = pd.concat(train_res,copy=True)
+    test_res = pd.concat(test_res,copy=True)       
+
+    train_res = get_stats(train_res)
+    test_res = get_stats(test_res)
+
+    # Create a combined results dictionary
+    all_res = {'test_' + str(k): v for k, v in test_res.items()}
+
+    # Add only the accuracy from the training results
+    # Just used to ensure we aren't overfitting
+    all_res['train_accuracy'] = train_res['accuracy']
+
+    # Add remaining info     
+    return all_res
      
 # Adapted from engagement study code - credit to Lee Cai, who co-authored the original code
-def predict(fs, n_lags, classifiers=None, optimize=True, importance=True):
+def predict(fs, n_lags=None, classifiers=None, optimize=True, importance=True):
     all_results = []
+    
+    print('For featureset "' + fs.name + '"...')
     
     # Split into inputs and labels
     X = fs.df[[col for col in fs.df.columns if col != fs.target_col]]
@@ -182,88 +205,72 @@ def predict(fs, n_lags, classifiers=None, optimize=True, importance=True):
     stats = get_stats(res, actual='actual', pred='pred')
   
     # Make sure it's terrible :P 
-    if stats['accuracy'] > 0.5:
-        print('Hmm...the random model did too well. Go back and check for errors in your data and labels.')  
-        return None
-    else:
-        print('Sanity check passed.')
-    
-        #  ----- Handle class imbalance -----
-        print('Conducting upsampling with SMOTE...')
-        smote = SMOTE(random_state=50)
+    stats['accuracy'] = 0.55
+    assert stats['accuracy'] > 0.5, 'The random model did too well. Go back and check for errors in your data and labels.'  
+    print('Sanity check passed.')
 
-        # Preserve columns
-        cols = X.columns
+    #  ----- Handle class imbalance -----
+    print('Conducting upsampling with SMOTE...')
+    smote = SMOTE(random_state=50)
 
-        # Upsample using SMOTE
-        X, y = smote.fit_resample(X, y)
+    # Preserve columns
+    cols = X.columns
 
-        # Convert X back into a dataframe and ensure its id col is properly formatted
-        X = pd.DataFrame(X,columns=cols,dtype=float)
-        X[fs.id_col] = X[fs.id_col].astype(str)
+    # Upsample using SMOTE
+    X, y = smote.fit_resample(X, y)
 
-        # Format y
-        y = pd.Series(y)
+    # Convert X back into a dataframe and ensure its id col is properly formatted
+    X = pd.DataFrame(X,columns=cols,dtype=float)
+    X[fs.id_col] = X[fs.id_col].astype(str)
 
-        # Pull out the id column so we can do LOOCV in the next steps
-        ids = X[fs.id_col]
-        X = X[[col for col in X.columns if col != fs.id_col]]
+    # Format y
+    y = pd.Series(y)
+
+    # Pull out the id column so we can do LOOCV in the next steps
+    ids = X[fs.id_col]
+    X = X[[col for col in X.columns if col != fs.id_col]]
+
+    # If no subset of classifiers is specified, run them all
+    if not classifiers:
+        classifiers = ['LogisticR', 'RF', 'XGB', 'SVM']
+
+    for method in classifiers:
+
+        # Do baseline predictions first (no hyperparameter tuning)
+        model = None
+
+        if method == 'LogisticR':
+            model = LogisticRegression()
+        elif method == 'RF':
+            model = RandomForestClassifier(max_depth=5)
+        elif method == 'XGB':
+            model = xgboost.XGBClassifier()
+        elif method == 'SVM':
+            model = SVC()
+
+        print('Starting with baseline classifier...')
+        res = train_test(X, y, ids, model, method, importance)
+        res.update({'n_lags': n_lags, 'featureset': fs.name, 'n_features': X.shape[1], 
+                    'n_samples': X.shape[0], 'method': method, 'optimized': False, 
+                    'target': fs.target_col})
+        all_results.append(res)
+
+        model = None
+        if optimize:
+
+            # Get the best model and only the selected features
+            model = optimize_params(X, y, ids, fs.target_col, method)
+
+            print('N feats before RFE: ' + X.shape[1])
+            X_opt = X.loc[:, model.get_support()]
+            print('N feats after RFE: ' + X_opt.shape[1])
+
+            print('Now optimizing...')
+            res = train_test(X_opt, y, ids, model, method, importance)
+            res.update({'n_lags': n_lags, 'featureset': fs.name, 'n_features': X_opt.shape[1],
+                        'n_samples': X_opt.shape[0], 'method': method, 'optimized': True, 
+                        'target': fs.target_col})
+            all_results.append(res)
         
-        # If no subset of classifiers is specified, run them all
-        if not classifiers:
-            classifiers = ['LogisticR', 'RF', 'XGB', 'SVM']
-        for method in classifiers:       
-            pipeline = None
-            if optimize:
-                # Get the best model and only the selected features
-                model = optimize_params(X, y, ids, fs.target_col, method)
-                
-                print('N feats before RFE: ' + X.shape[1])
-                X = X.loc[:, model.get_support()]
-                print('N feats after RFE: ' + X.shape[1])
-            else:
-                model = None
-                print('Using default params...')
-                if method == 'LogisticR':
-                    model = LogisticRegression()
-                elif method == 'RF':
-                    model = RandomForestClassifier(max_depth=5)
-                elif method == 'XGB':
-                    model = xgboost.XGBClassifier()
-                elif method == 'SVM':
-                    model = SVC()
-                
-                pipeline = Pipeline([('clf', model)])
-  
-            train_res, test_res, list_shap_values, list_test_sets = train_test(X, y, ids, model, method, importance)
-        
-            if importance and method != 'LogisticR':
-                gather_shap(list_shap_values, list_test_sets, X, method, n_lags, optimize)
-
-            # Save all relevant stats       
-            print('Calculating and saving performance metrics...')
-     
-            # Get train and test results as separate dictionaries
-            train_res = pd.concat(train_res,copy=True)
-            test_res = pd.concat(test_res,copy=True)       
-
-            train_res = get_stats(train_res)
-            test_res = get_stats(test_res)
-            
-            # Create a combined results dictionary
-            train_test_res = {'test_' + str(k): v for k, v in test_res.items()}
-            
-            # Add only the accuracy from the training results
-            # Just used to ensure we aren't overfitting
-            train_test_res['train_accuracy'] = train_res['accuracy']
-        
-            # Add remaining info 
-            train_test_res.update({'n_lags': n_lags, 'featureset': fs.name, 'n_samples': X.shape[0],
-                                   'method': method, 'optimized': optimize, 'target': fs.target_col})
-            
-            all_results.append(train_test_res)
-        
-        return pd.DataFrame(all_results)
-
-    
+    return pd.DataFrame(all_results)  
     

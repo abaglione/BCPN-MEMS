@@ -15,7 +15,9 @@ class Featureset:
     def create_combined_featureset(self, fs):
         # Assumes they have the same id_col
         df = self.df.merge(fs.df, on=[self.id_col])
-        return Featureset(df=df, name=self.name + ' - ' + fs.name, id_col=self.id_col, target_col=self.target_col)
+        return Featureset(df=df, name=self.name + ' - ' + fs.name, id_col=self.id_col, 
+                          target_col=self.target_col,
+                          epoch=self.epoch)
         
     def transform(self):
         
@@ -39,7 +41,10 @@ class Featureset:
         scaler = MinMaxScaler(feature_range=(0, 1))
         to_scale = [col for col in self.df.columns if col != self.id_col and col != self.target_col]
         self.df[to_scale] = scaler.fit_transform(self.df[to_scale]) 
- 
+        
+        # Final sanity check to ensure imputation / transformations worked - none should be null!
+        assert self.df.isnull().values.any() == False, "Imputation failed! Investigate your dataframe."
+        
     def get_lagged_featureset(self, n_lags):
         '''Generate lagged observations for temporal data, for each subject '''
         rows = []
@@ -93,9 +98,10 @@ class Featureset:
             if n_lags:
                 # Get new, lagged featureset
                 fs = self.get_lagged_featureset(n_lags)
+                fs.handle_multicollinearity()
                 return fs
             else:
-                raise ValueError("Mandatory parameter n_lags not provided")
+                raise ValueError("n_lags is null, but should be int for featureset with epoch.")
             
     def __repr__(self):    
         rep = '\n'.join([
