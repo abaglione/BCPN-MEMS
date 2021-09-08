@@ -5,7 +5,7 @@ import shap
 import pickle
 import xgboost
 from sklearn.feature_selection import RFE
-from sklearn.model_selection import GridSearchCV, LeaveOneGroupOut, RepeatedKFold
+from sklearn.model_selection import GridSearchCV, LeaveOneGroupOut, KFold
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import SVC
@@ -147,7 +147,7 @@ def train_test(X, y, ids, method, n_lags, optimize, importance):
     groups = None
     
     if X.shape[0] > 500:
-        cv = RepeatedKFold(n_splits=10, n_repeats=10, random_state=1)        
+        cv = KFold(n_splits=10, shuffle=True, random_state=5)        
     else:
         '''For a small dataset, leave one group out (LOGO) will function as our leave one subject out (LOSO) cross validation.
         Participant IDs act as group labels. 
