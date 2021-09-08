@@ -5,8 +5,7 @@ import shap
 import pickle
 import xgboost
 from sklearn.feature_selection import RFE
-from sklearn.model_selection import GridSearchCV
-from sklearn.model_selection import LeaveOneGroupOut
+from sklearn.model_selection import GridSearchCV, LeaveOneGroupOut, KFold
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import SVC
@@ -41,42 +40,42 @@ def get_performance_metrics(df, actual='actual', pred='pred', labels=[0, 1]):
 # TODO - make shap work for non-test sets too
 
 
-def calc_shap(X, model, method):
-    if method == 'RF' or method == 'XGB':
-        shap_values = shap.TreeExplainer(model).shap_values(X)
+def calc_shap(X_train, X_test, model, method):
+    shap_values = None
+    
+    if method == 'LogisticR':
+        shap_values = shap.LinearExplainer(model, X_train).shap_values(X_test)
+    elif method == 'RF' or method == 'XGB':
+        shap_values = shap.TreeExplainer(model).shap_values(X_test)
     else:
-        shap_values = shap.KernelExplainer(model.predict, X).shap_values(X)
+        X_train_summary = shap.kmeans(X_train, 10)
+        shap_values = shap.KernelExplainer(model.predict, X_train_summary).shap_values(X_test)
 
     return shap_values
 
 
-def gather_shap(X, method, shap_values, indices):
+def gather_shap(X, method, shap_values, test_indices):
     print('Gathering SHAP stats...')
 
     # https://lucasramos-34338.medium.com/visualizing-variable-importance-using-shap-and-cross-validation-bd5075e9063a
 
     # Combine results from all iterations
-    all_indices = indices[0]
-    all_values = np.array(shap_values[0])
-#     print(indices)
-#     print(shap_values)
+    all_test_indices = test_indices[0]
+    all_shap_values = np.array(shap_values[0])
 
-    for i in range(1, len(indices)):
-        all_indices = np.concatenate((all_indices, indices[i]), axis=0)
-        if method == 'RF':
-            all_values = np.concatenate(
-                (all_values, np.array(shap_values[i])), axis=1)
+    for i in range(1, len(test_indices)):
+        all_test_indices = np.concatenate((all_test_indices, test_indices[i]), axis=0)
+        
+        if method == 'RF': # Random forest has multiple outputs
+            all_shap_values = np.concatenate(
+                (all_shap_values, np.array(shap_values[i])), axis=1)
         else:
-            all_values = np.concatenate((all_values, shap_values[i]), axis=0)
+            all_shap_values = np.concatenate((all_shap_values, shap_values[i]), axis=0)
 
-
-#     print(all_indices)
-#     print(type(all_indices))
-#     print(X)
     # Bring back variable names
-    X_test = pd.DataFrame(X.iloc[all_indices], columns=X.columns)
+    X_test = pd.DataFrame(X.iloc[all_test_indices], columns=X.columns)
 
-    return X_test, all_values
+    return X_test, all_shap_values
 
 # credit to Lee Cai, who bootstrapped the original function in a diff project
 # Some modifications have been made to suit this project.
@@ -95,26 +94,28 @@ def optimize_params(X, y, method):
 
     elif method == 'RF':
         param_grid = {
-            'n_estimators': [50, 100, 250],
+            'n_estimators': [50, 100, 250, 500],
             'max_depth': [2, 5, 10, 25],
         }
         model = RandomForestClassifier(oob_score=True, random_state=1008)
 
     elif method == 'XGB':
         param_grid = {
-            'n_estimators': [50, 100, 250],
-            'max_depth': [3, 5],
-            'min_child_weight': [1, 3],
-            'learning_rate': [0.05, 0.1, 0.15]
+            'n_estimators': [50, 100, 250, 500],
+            'max_depth': [3, 5, 8],
+            'min_child_weight': [1, 3, 5],
+            'learning_rate': [0.05, 0.01, 0.1, 0.15]
         }
         model = xgboost.XGBClassifier(random_state=1008)
 
     elif method == 'SVM':
         param_grid = {
-            'C': [1, 10],
+            'C': [1, 10, 100],
             'gamma': ['scale', 'auto'],
-            'kernel': ['rbf']
+            'kernel': ['linear', 'rbf']
         }
+        
+        print(param_grid)
         model = SVC(random_state=1008)
 
     final_param_grid = {'estimator__' + k: v for k, v in param_grid.items()}
@@ -125,9 +126,9 @@ def optimize_params(X, y, method):
     if X.shape[1] > 30:
         step = 20
 
-    rfe = RFE(model, step=step)
+    rfe = RFE(model, step=step, verbose=3)
     grid = GridSearchCV(estimator=rfe, param_grid=final_param_grid,
-                        cv=5, scoring='accuracy')
+                        cv=5, scoring='accuracy', n_jobs=3, verbose=3)
     grid.fit(X, y)
 
     # This will return the best RFE instance
@@ -138,15 +139,26 @@ def train_test(X, y, ids, method, n_lags, optimize, importance):
     train_res = []
     test_res = []
     all_shap_values = list()
-    all_test_indices = list()
+    all_test_test_indices = list()
 
-    '''Leave one group out (LOGO) will function as our leave one subject out (LOSO) cross validation.
-       Participant IDs act as group labels. 
-       So, at each iteration, one "group" (i.e. one participant id)'s samples will be dropped.
-       Seems convoluded but works well.
-       '''
-    logo = LeaveOneGroupOut()
-
+    # Get cross validator
+    cv = None
+    groups = None
+    
+    if X.shape[0] > 500:
+        cv = KFold(n_splits=10, random_state=8, shuffle=True)        
+    else:
+        '''For a small dataset, leave one group out (LOGO) will function as our leave one subject out (LOSO) cross validation.
+        Participant IDs act as group labels. 
+        So, at each iteration, one "group" (i.e. one participant id)'s samples will be dropped.
+        Seems convoluded but works well.
+        '''
+        cv = LeaveOneGroupOut()
+        groups=ids
+        
+    print(cv)
+    
+    # Get a baseline classifier. May not be used if we are optimizing instead.
     clf = None
     if not optimize:
         if method == 'LogisticR':
@@ -158,19 +170,16 @@ def train_test(X, y, ids, method, n_lags, optimize, importance):
         elif method == 'SVM':
             clf = SVC(random_state=1000)
 
+    # Begin train/test
     print('Training and testing with ' + method + ' model...')
-    for train_indices, test_indices in logo.split(X, y, ids):
+    for train_test_indices, test_test_indices in cv.split(X=X, y=y, groups=groups):
 
-        X_train, y_train = X.loc[train_indices, :], y[train_indices]
-        X_test, y_test = X.loc[test_indices, :], y[test_indices]
+        X_train, y_train = X.loc[train_test_indices, :], y[train_test_indices]
+        X_test, y_test = X.loc[test_test_indices, :], y[test_test_indices]
 
         if optimize:
             # Get the best RFE instance
             clf = optimize_params(X_train, y_train, method)
-            
-            # Retain only the most important features
-            X_train = X_train.loc[:, clf.get_support()]
-            X_test = X_test.loc[:, clf.get_support()]
 
         clf.fit(X_train, y_train)
 
@@ -181,28 +190,29 @@ def train_test(X, y, ids, method, n_lags, optimize, importance):
         # Store results
         train_res.append(pd.DataFrame(
             {'pred': y_train_pred, 'actual': y_train}))
+        
         test_res.append(pd.DataFrame({'pred': y_test_pred, 'actual': y_test}))
 
         # Calculate feature importance while we're here, using SHAP
-        if importance and method != 'LogisticR':
-
+        if importance:
             if optimize:
-                # Pass in just the model (not the clf, which is an RFE instance)
-                shap_values = calc_shap(
-                    X=X_test, model=clf.estimator_, method=method)
+                # Pass in just the selected features and underlying model (not the clf, which is an RFE instance)
+                shap_values = calc_shap(X_train=X_train.loc[:, clf.get_support()], X_test=X_test.loc[:, clf.get_support()], 
+                                        model=clf.estimator_, method=method)
             else:
 
                 # Pass in just the model (which IS the clf, in this case)
-                shap_values = calc_shap(X=X_test, model=clf, method=method)
+                shap_values = calc_shap(X_train=X_train, X_test=X_test,
+                                        model=clf, method=method)
 
             all_shap_values.append(shap_values)
-            all_test_indices.append(test_indices)
+            all_test_test_indices.append(test_test_indices)
 
-    if importance and method != 'LogisticR':
+    if importance:
 
         # Get and save all the shap values
         X_test, shap_values = gather_shap(
-            X=X, method=method, shap_values=all_shap_values, indices=all_test_indices)
+            X=X, method=method, shap_values=all_shap_values, test_indices=all_test_test_indices)
 
         filename = 'feature_importance/X_test_' + \
             method + '_' + str(n_lags) + '_lags'
@@ -289,13 +299,11 @@ def predict(fs, n_lags=None, classifiers=None, optimize=True, importance=True):
     for method in classifiers:
 
         # Do baseline predictions first (no hyperparameter tuning)
-
-        # TODO...Anna...you're doing gridsearch on all your data :| fix this so you only do it on your training set!
-        # Will need to move the optimization calls into train_test
         print('Starting with baseline classifier...')
         res = train_test(X=X, y=y, ids=ids, method=method,
-                         n_lags=n_lags, optimize=False, importance=importance)
+                         n_lags=n_lags, optimize=False, importance=False)
         
+        print(res)
         res.update({'n_lags': n_lags, 'featureset': fs.name, 'n_features': X.shape[1],
                     'n_samples': X.shape[0], 'method': method, 'optimized': False,
                     'target': fs.target_col})
@@ -303,12 +311,14 @@ def predict(fs, n_lags=None, classifiers=None, optimize=True, importance=True):
         all_results.append(res)
 
         if optimize:
-
+            print('Getting optimized classifier...')
             res = train_test(X=X, y=y, ids=ids, method=method,
-                             n_lags=n_lags, optimize=True, importance=importance)
+                             n_lags=n_lags, optimize=optimize, importance=importance)
             
+            print(res)
+                
             res.update({'n_lags': n_lags, 'featureset': fs.name, 'n_features': X.shape[1],
-                        'n_samples': X.shape[0], 'method': method, 'optimized': True,
+                        'n_samples': X.shape[0], 'method': method, 'optimized': optimize,
                         'target': fs.target_col})
             
             all_results.append(res)
