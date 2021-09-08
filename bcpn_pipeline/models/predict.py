@@ -5,7 +5,7 @@ import shap
 import pickle
 import xgboost
 from sklearn.feature_selection import RFE
-from sklearn.model_selection import GridSearchCV, LeaveOneGroupOut, KFold
+from sklearn.model_selection import GridSearchCV, LeaveOneGroupOut, RepeatedKFold
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import SVC
@@ -83,7 +83,7 @@ def gather_shap(X, method, shap_values, test_indices):
 
 def optimize_params(X, y, method):
     model = None
-
+    n_jobs = 4
     if method == 'LogisticR':
         param_grid = {
             'C': np.logspace(-4, 4, 20),
@@ -100,11 +100,12 @@ def optimize_params(X, y, method):
         model = RandomForestClassifier(oob_score=True, random_state=1008)
 
     elif method == 'XGB':
+        n_jobs = 1 # Known bug with multiprocessing when using XGBoost necessitates this...
         param_grid = {
             'n_estimators': [50, 100, 250, 500],
-            'max_depth': [3, 5, 8],
-            'min_child_weight': [1, 3, 5],
-            'learning_rate': [0.05, 0.01, 0.1, 0.15]
+            'max_depth': [3, 5, 8, 11],
+            'min_child_weight': [1, 3],
+            'learning_rate': [0.05, 0.01, 0.1]
         }
         model = xgboost.XGBClassifier(random_state=1008)
 
@@ -128,7 +129,7 @@ def optimize_params(X, y, method):
 
     rfe = RFE(model, step=step, verbose=3)
     grid = GridSearchCV(estimator=rfe, param_grid=final_param_grid,
-                        cv=5, scoring='accuracy', n_jobs=3, verbose=3)
+                        cv=5, scoring='accuracy', n_jobs=n_jobs, verbose=3)
     grid.fit(X, y)
 
     # This will return the best RFE instance
@@ -146,7 +147,7 @@ def train_test(X, y, ids, method, n_lags, optimize, importance):
     groups = None
     
     if X.shape[0] > 500:
-        cv = KFold(n_splits=10, random_state=8, shuffle=True)        
+        cv = RepeatedKFold(n_splits=10, n_repeats=10, random_state=1)        
     else:
         '''For a small dataset, leave one group out (LOGO) will function as our leave one subject out (LOSO) cross validation.
         Participant IDs act as group labels. 
