@@ -11,6 +11,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import SVC
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, mean_absolute_error, roc_curve, confusion_matrix
 from sklearn.pipeline import Pipeline
+from tune_sklearn import TuneGridSearchCV
 import matplotlib.pyplot as plt
 
 
@@ -82,13 +83,12 @@ def gather_shap(X, method, shap_values, test_indices):
 
 
 def optimize_params(X, y, method):
-    model = None
-    n_jobs = 3
+    n_jobs = 1
     if method == 'LogisticR':
         param_grid = {
             'C': np.logspace(-4, 4, 20),
             'penalty': ['l2'],
-            'max_iter': [3000]
+            'max_iter': [3000, 6000, 9000]
         }
         model = LogisticRegression(random_state=1008)
 
@@ -100,12 +100,12 @@ def optimize_params(X, y, method):
         model = RandomForestClassifier(oob_score=True, random_state=1008)
 
     elif method == 'XGB':
-        n_jobs = 1 # Known bug with multiprocessing when using XGBoost necessitates this...
+#         n_jobs = 1 # Known bug with multiprocessing when using XGBoost necessitates this...
         param_grid = {
             'n_estimators': [50, 100, 250, 500],
-            'max_depth': [3, 5, 6, 8],
+            'max_depth': [3, 6, 9, 12],
             'min_child_weight': [1, 3],
-            'learning_rate': [0.01, 0.1, 0.3]
+            'learning_rate': [0.01, 0.1, 0.3, 0.5]
         }
         model = xgboost.XGBClassifier(random_state=1008)
 
@@ -130,15 +130,22 @@ def optimize_params(X, y, method):
     # Ensure we customize our CV to shuffle, to avoid outlier folds that perform worse
     cv = KFold(n_splits=5, shuffle=True, random_state=2)     
     rfe = RFE(model, step=step, verbose=3)
-    grid = GridSearchCV(estimator=rfe, param_grid=final_param_grid,
-                        cv=cv, scoring='accuracy', n_jobs=n_jobs, verbose=3)
-    grid.fit(X, y)
+#     grid = GridSearchCV(estimator=rfe, param_grid=final_param_grid,
+#                         cv=cv, scoring='accuracy', n_jobs=n_jobs, verbose=3)
 
+    tune_search = TuneGridSearchCV(estimator=rfe, param_grid=final_param_grid,
+                                   cv=cv, scoring='accuracy',  n_jobs=n_jobs,
+                                   verbose=2)
+
+#     grid.fit(X, y)
+    tune_search.fit(X, y)
+    
     # This will return the best RFE instance
-    return grid.best_estimator_
+#     return grid.best_estimator_
+    return tune_search.best_estimator_
 
 
-def train_test(X, y, ids, method, n_lags, optimize, importance):
+def train_test(X, y, ids, fs_name, method, n_lags, optimize, importance):
     train_res = []
     test_res = []
     all_shap_values = list()
@@ -220,20 +227,15 @@ def train_test(X, y, ids, method, n_lags, optimize, importance):
         X_test, shap_values = gather_shap(
             X=X, method=method, shap_values=all_shap_values, test_indices=all_test_test_indices)
 
-        filename = 'feature_importance/X_test_' + \
-            method + '_' + str(n_lags) + '_lags'
+        filename = fs_name + '_' + method + '_' + str(n_lags) + '_lags'
         if optimize:
             filename += '_optimized'
         filename += '.ob'
-        with open(filename, 'wb') as fp:
+        
+        with open('feature_importance/X_test_' + filename, 'wb') as fp:
             pickle.dump(X_test, fp)
 
-        filename = 'feature_importance/shap_' + \
-            method + '_' + str(n_lags) + '_lags'
-        if optimize:
-            filename += '_optimized'
-        filename += '.ob'
-        with open(filename, 'wb') as fp:
+        with open('feature_importance/shap_' + filename, 'wb') as fp:
             pickle.dump(shap_values, fp)
 
     # Save all relevant stats
@@ -306,7 +308,7 @@ def predict(fs, n_lags=None, classifiers=None, optimize=True, importance=True):
 
         # Do baseline predictions first (no hyperparameter tuning)
         print('Starting with baseline classifier...')
-        res = train_test(X=X, y=y, ids=ids, method=method,
+        res = train_test(X=X, y=y, ids=ids, fs_name=fs.name, method=method,
                          n_lags=n_lags, optimize=False, importance=False)
         
         print(res)
@@ -322,7 +324,7 @@ def predict(fs, n_lags=None, classifiers=None, optimize=True, importance=True):
 
         if optimize:
             print('Getting optimized classifier...')
-            res = train_test(X=X, y=y, ids=ids, method=method,
+            res = train_test(X=X, y=y, ids=ids, fs_name=fs.name, method=method,
                              n_lags=n_lags, optimize=optimize, importance=importance)
             
             print(res)
