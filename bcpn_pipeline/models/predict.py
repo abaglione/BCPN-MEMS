@@ -83,7 +83,7 @@ def gather_shap(X, method, shap_values, test_indices):
 
 def optimize_params(X, y, method):
     model = None
-    n_jobs = 4
+    n_jobs = 3
     if method == 'LogisticR':
         param_grid = {
             'C': np.logspace(-4, 4, 20),
@@ -103,9 +103,9 @@ def optimize_params(X, y, method):
         n_jobs = 1 # Known bug with multiprocessing when using XGBoost necessitates this...
         param_grid = {
             'n_estimators': [50, 100, 250, 500],
-            'max_depth': [3, 5, 8, 11],
+            'max_depth': [3, 5, 6, 8],
             'min_child_weight': [1, 3],
-            'learning_rate': [0.05, 0.01, 0.1]
+            'learning_rate': [0.01, 0.1, 0.3]
         }
         model = xgboost.XGBClassifier(random_state=1008)
 
@@ -127,9 +127,11 @@ def optimize_params(X, y, method):
     if X.shape[1] > 30:
         step = 20
 
+    # Ensure we customize our CV to shuffle, to avoid outlier folds that perform worse
+    cv = KFold(n_splits=5, shuffle=True, random_state=2)     
     rfe = RFE(model, step=step, verbose=3)
     grid = GridSearchCV(estimator=rfe, param_grid=final_param_grid,
-                        cv=5, scoring='accuracy', n_jobs=n_jobs, verbose=3)
+                        cv=cv, scoring='accuracy', n_jobs=n_jobs, verbose=3)
     grid.fit(X, y)
 
     # This will return the best RFE instance
@@ -182,6 +184,9 @@ def train_test(X, y, ids, method, n_lags, optimize, importance):
             # Get the best RFE instance
             clf = optimize_params(X_train, y_train, method)
 
+            if method == 'XGB':
+                print(clf.estimator_.get_xgb_params())
+            
         clf.fit(X_train, y_train)
 
         # Be sure to store the training results so we can ensure we aren't overfitting later
@@ -309,6 +314,10 @@ def predict(fs, n_lags=None, classifiers=None, optimize=True, importance=True):
                     'n_samples': X.shape[0], 'method': method, 'optimized': False,
                     'target': fs.target_col})
         
+        pd.DataFrame([res]).to_csv('results/final_pred_results_' + 
+                                   fs.name + '_' + 
+                                   str(n_lags) + '_lags.csv', mode='a', index=False)
+        
         all_results.append(res)
 
         if optimize:
@@ -321,6 +330,10 @@ def predict(fs, n_lags=None, classifiers=None, optimize=True, importance=True):
             res.update({'n_lags': n_lags, 'featureset': fs.name, 'n_features': X.shape[1],
                         'n_samples': X.shape[0], 'method': method, 'optimized': optimize,
                         'target': fs.target_col})
+            
+            pd.DataFrame([res]).to_csv('results/final_pred_results_' + 
+                                       fs.name + '_' + 
+                                       str(n_lags) + '_lags.csv', mode='a', index=False)
             
             all_results.append(res)
 
