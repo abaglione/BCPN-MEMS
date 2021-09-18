@@ -4,39 +4,55 @@ from imblearn.over_sampling import SMOTE
 import shap
 import pickle
 import xgboost
+from scipy import interp
 from sklearn.feature_selection import RFE
 from sklearn.model_selection import GridSearchCV, LeaveOneGroupOut, KFold
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import SVC
-from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, mean_absolute_error, roc_curve, confusion_matrix
+from sklearn.metrics import accuracy_score, precision_recall_fscore_support, mean_absolute_error, roc_curve, auc, confusion_matrix
 from sklearn.pipeline import Pipeline
 from tune_sklearn import TuneGridSearchCV
 import matplotlib.pyplot as plt
 
 
-def get_performance_metrics(df, actual='actual', pred='pred', labels=[0, 1]):
+def save_res_auc(res, mean_tpr, mean_fpr):
+    filename = res['featureset'] + '_' + str(res['n_lags']) + '_lags.csv'
+    
+    # Save the auc metrics while we're here                    
+    auc_df = pd.DataFrame({'test_mean_tpr': mean_tpr, 'test_mean_fpr': mean_fpr})
+    auc_df['method'] = res['method']
+    print(auc_df)
+    auc_df.to_csv('results/final_auc_results_' + filename, mode='a', index=False)
+                  
+    pd.DataFrame([res]).to_csv('results/final_pred_results_' + filename, mode='a', index=False)
+
+
+def get_performance_metrics(df, tprs=None, aucs=None, mean_fpr=None, actual='actual', pred='pred'):
     stats = {}
 
-    df['accuracy'] = accuracy_score(y_true=df[actual], y_pred=df[pred])
-    stats['accuracy'] = df['accuracy'].sum()/df.shape[0]
+    stats['accuracy'] = accuracy_score(y_true=df[actual], y_pred=df[pred])
+    
+    precision, recall, f1_score, support = precision_recall_fscore_support(
+        y_true=df[actual], y_pred=df[pred], average='macro'
+    )
+    
+    stats.update({'precision': precision, 'recall': recall, 
+                  'f1_score': f1_score, 'support': support
+                 })
+    
+    if tprs is not None and aucs is not None and mean_fpr is not None:
+        mean_tpr = np.mean(tprs, axis=0)
+        mean_tpr[-1] = 1.0
+        mean_auc = auc(mean_fpr, mean_tpr)
+        std_auc = np.std(aucs)
 
-    df['f1'] = f1_score(y_true=df[actual], y_pred=df[pred])
-    stats['f1'] = df['f1'].sum()/df.shape[0]
+        stats.update({'mean_auc': mean_auc, 'std_auc': std_auc})
+        
+        return stats, mean_tpr
 
-    df['precision'] = precision_score(y_true=df[actual], y_pred=df[pred])
-    stats['precision'] = df['precision'].sum()/df.shape[0]
-
-    df['recall'] = recall_score(y_true=df[actual], y_pred=df[pred])
-    stats['recall'] = df['recall'].sum()/df.shape[0]
-
-    tn, fp, fn, tp = confusion_matrix(
-        df[actual], df[pred], labels=labels).ravel()
-    stats.update({'tpr': tp / (tp + fn), 'fpr': fp / (fp + tn),
-                  'tnr': tn / (tn + fp), 'fnr': fn / (tp + fn)
-                  })
-
-    return stats
+    else:
+        return stats
 
 # TODO - make shap work for non-test sets too
 
@@ -83,7 +99,7 @@ def gather_shap(X, method, shap_values, test_indices):
 
 
 def optimize_params(X, y, method):
-    n_jobs = 1
+    n_jobs = -1
     if method == 'LogisticR':
         param_grid = {
             'C': np.logspace(-4, 4, 20),
@@ -110,15 +126,18 @@ def optimize_params(X, y, method):
         model = xgboost.XGBClassifier(random_state=1008)
 
     elif method == 'SVM':
+
+        ''' Kernel MUST be linear if we are going to use tune_sklearn, since we need either
+        coefficients or feature importances in order to select the best model. '''
         param_grid = {
             'C': [1, 10, 100],
-            'gamma': ['scale', 'auto'],
-            'kernel': ['linear', 'rbf']
+            'gamma': [1, 0.1, 0.01, 0.001, 0.0001],
+            'kernel': ['linear']
         }
         
-        print(param_grid)
         model = SVC(random_state=1008)
 
+    print('n_jobs = ' + str(n_jobs))
     final_param_grid = {'estimator__' + k: v for k, v in param_grid.items()}
 
     # Get RFE and gridsearch objects
@@ -134,7 +153,7 @@ def optimize_params(X, y, method):
 #                         cv=cv, scoring='accuracy', n_jobs=n_jobs, verbose=3)
 
     tune_search = TuneGridSearchCV(estimator=rfe, param_grid=final_param_grid,
-                                   cv=cv, scoring='accuracy',  n_jobs=n_jobs,
+                                   cv=cv, scoring='roc_auc',  n_jobs=n_jobs,
                                    verbose=2)
 
 #     grid.fit(X, y)
@@ -146,10 +165,6 @@ def optimize_params(X, y, method):
 
 
 def train_test(X, y, ids, fs_name, method, n_lags, optimize, importance):
-    train_res = []
-    test_res = []
-    all_shap_values = list()
-    all_test_test_indices = list()
 
     # Get cross validator
     cv = None
@@ -182,6 +197,16 @@ def train_test(X, y, ids, fs_name, method, n_lags, optimize, importance):
 
     # Begin train/test
     print('Training and testing with ' + method + ' model...')
+   
+    tprs = [] # Array of true positive rates
+    aucs = []# Array of AUC scores
+    mean_fpr = np.linspace(0, 1, 100)
+    
+    train_res = [] # Array of dataframes of true vs pred labels
+    test_res = [] # Array of dataframes of true vs pred labels
+    all_shap_values = list() 
+    all_test_test_indices = list()
+
     for train_test_indices, test_test_indices in cv.split(X=X, y=y, groups=groups):
 
         X_train, y_train = X.loc[train_test_indices, :], y[train_test_indices]
@@ -199,11 +224,18 @@ def train_test(X, y, ids, fs_name, method, n_lags, optimize, importance):
         # Be sure to store the training results so we can ensure we aren't overfitting later
         y_train_pred = clf.predict(X_train)
         y_test_pred = clf.predict(X_test)
+        y_test_probas_ = clf.predict_proba(X_test)
 
-        # Store results
-        train_res.append(pd.DataFrame(
-            {'pred': y_train_pred, 'actual': y_train}))
+        # Store TPR and AUC
+        # Thank you sklearn documentation https://scikit-learn.org/stable/auto_examples/model_selection/plot_roc_crossval.html
+        fpr, tpr, thresholds = roc_curve(y_test, y_test_probas_[:, 1])
+        tprs.append(interp(mean_fpr, fpr, tpr))
+        tprs[-1][0] = 0.0
+        roc_auc = auc(fpr, tpr)
+        aucs.append(roc_auc)
         
+        # Store predicted and actual vals in dataframe
+        train_res.append(pd.DataFrame({'pred': y_train_pred, 'actual': y_train}))
         test_res.append(pd.DataFrame({'pred': y_test_pred, 'actual': y_test}))
 
         # Calculate feature importance while we're here, using SHAP
@@ -246,7 +278,7 @@ def train_test(X, y, ids, fs_name, method, n_lags, optimize, importance):
     test_res = pd.concat(test_res, copy=True)
 
     train_res = get_performance_metrics(train_res)
-    test_res = get_performance_metrics(test_res)
+    test_res, mean_tpr = get_performance_metrics(test_res, tprs, aucs, mean_fpr)
 
     # Create a combined results dictionary
     all_res = {'test_' + str(k): v for k, v in test_res.items()}
@@ -255,12 +287,10 @@ def train_test(X, y, ids, fs_name, method, n_lags, optimize, importance):
     # Just used to ensure we aren't overfitting
     all_res['train_accuracy'] = train_res['accuracy']
 
-    # Add remaining info
-    return all_res
+    return all_res, mean_tpr, mean_fpr
 
 # Adapted from engagement study code - credit to Lee Cai, who co-authored the original code
 def predict(fs, n_lags=None, classifiers=None, optimize=True, importance=True):
-    all_results = []
 
     print('For featureset "' + fs.name + '"...')
 
@@ -304,22 +334,20 @@ def predict(fs, n_lags=None, classifiers=None, optimize=True, importance=True):
     if not classifiers:
         classifiers = ['LogisticR', 'RF', 'XGB', 'SVM']
 
+    all_results = []
     for method in classifiers:
 
         # Do baseline predictions first (no hyperparameter tuning)
         print('Starting with baseline classifier...')
-        res = train_test(X=X, y=y, ids=ids, fs_name=fs.name, method=method,
-                         n_lags=n_lags, optimize=False, importance=False)
+        res, mean_tpr, mean_fpr = train_test(X=X, y=y, ids=ids, fs_name=fs.name, method=method,
+                                  n_lags=n_lags, optimize=False, importance=False)
         
         print(res)
         res.update({'n_lags': n_lags, 'featureset': fs.name, 'n_features': X.shape[1],
                     'n_samples': X.shape[0], 'method': method, 'optimized': False,
                     'target': fs.target_col})
         
-        pd.DataFrame([res]).to_csv('results/final_pred_results_' + 
-                                   fs.name + '_' + 
-                                   str(n_lags) + '_lags.csv', mode='a', index=False)
-        
+        save_res_auc(res, mean_tpr, mean_fpr)
         all_results.append(res)
 
         if optimize:
@@ -330,13 +358,11 @@ def predict(fs, n_lags=None, classifiers=None, optimize=True, importance=True):
             print(res)
                 
             res.update({'n_lags': n_lags, 'featureset': fs.name, 'n_features': X.shape[1],
-                        'n_samples': X.shape[0], 'method': method, 'optimized': optimize,
+                        'n_samples': X.shape[0], 'method': method, 'optimized': True,
                         'target': fs.target_col})
             
-            pd.DataFrame([res]).to_csv('results/final_pred_results_' + 
-                                       fs.name + '_' + 
-                                       str(n_lags) + '_lags.csv', mode='a', index=False)
-            
+            save_res_auc(res, mean_tpr, mean_fpr)
             all_results.append(res)
+            res = None
 
     return pd.DataFrame(all_results)
