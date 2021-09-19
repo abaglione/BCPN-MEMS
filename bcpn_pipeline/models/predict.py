@@ -22,7 +22,7 @@ def save_res_auc(res, mean_tpr, mean_fpr):
     # Save the auc metrics while we're here                    
     auc_df = pd.DataFrame({'test_mean_tpr': mean_tpr, 'test_mean_fpr': mean_fpr})
     auc_df['method'] = res['method']
-    print(auc_df)
+    auc_df['optimized'] = res['optimized']
     auc_df.to_csv('results/final_auc_results_' + filename, mode='a', index=False)
                   
     pd.DataFrame([res]).to_csv('results/final_pred_results_' + filename, mode='a', index=False)
@@ -116,7 +116,7 @@ def optimize_params(X, y, method):
         model = RandomForestClassifier(oob_score=True, random_state=1008)
 
     elif method == 'XGB':
-#         n_jobs = 1 # Known bug with multiprocessing when using XGBoost necessitates this...
+#         n_jobs = None # Known bug with multiprocessing when using XGBoost necessitates this...
         param_grid = {
             'n_estimators': [50, 100, 250, 500],
             'max_depth': [3, 6, 9, 12],
@@ -138,7 +138,6 @@ def optimize_params(X, y, method):
         model = SVC(random_state=1008)
 
     print('n_jobs = ' + str(n_jobs))
-    final_param_grid = {'estimator__' + k: v for k, v in param_grid.items()}
 
     # Get RFE and gridsearch objects
     # n_feats = 1.0 # select all features by default, in small datasets
@@ -147,12 +146,21 @@ def optimize_params(X, y, method):
         step = 20
 
     # Ensure we customize our CV to shuffle, to avoid outlier folds that perform worse
-    cv = KFold(n_splits=5, shuffle=True, random_state=2)     
-    rfe = RFE(model, step=step, verbose=3)
+    cv = KFold(n_splits=5, shuffle=True, random_state=2)   
+    
+    estimator = model
+    final_param_grid = param_grid
+    
+    # For methods without intrinsic feature selection, use RFE
+    if method != 'XGB' and method != 'RF':
+        print('Using RFE')
+        estimator = RFE(model, step=step, verbose=3)
+        final_param_grid = {'estimator__' + k: v for k, v in param_grid.items()}
+        
 #     grid = GridSearchCV(estimator=rfe, param_grid=final_param_grid,
 #                         cv=cv, scoring='accuracy', n_jobs=n_jobs, verbose=3)
 
-    tune_search = TuneGridSearchCV(estimator=rfe, param_grid=final_param_grid,
+    tune_search = TuneGridSearchCV(estimator=estimator, param_grid=final_param_grid,
                                    cv=cv, scoring='roc_auc',  n_jobs=n_jobs,
                                    verbose=2)
 
@@ -240,7 +248,10 @@ def train_test(X, y, ids, fs_name, method, n_lags, optimize, importance):
 
         # Calculate feature importance while we're here, using SHAP
         if importance:
-            if optimize:
+            
+            # Handle models which used RFE in a particular way
+            if optimize and method != 'RF' and method !='XGB':
+                
                 # Pass in just the selected features and underlying model (not the clf, which is an RFE instance)
                 shap_values = calc_shap(X_train=X_train.loc[:, clf.get_support()], X_test=X_test.loc[:, clf.get_support()], 
                                         model=clf.estimator_, method=method)
@@ -352,8 +363,8 @@ def predict(fs, n_lags=None, classifiers=None, optimize=True, importance=True):
 
         if optimize:
             print('Getting optimized classifier...')
-            res = train_test(X=X, y=y, ids=ids, fs_name=fs.name, method=method,
-                             n_lags=n_lags, optimize=optimize, importance=importance)
+            res, mean_tpr, mean_fpr  = train_test(X=X, y=y, ids=ids, fs_name=fs.name, method=method,
+                                                  n_lags=n_lags, optimize=optimize, importance=importance)
             
             print(res)
                 
