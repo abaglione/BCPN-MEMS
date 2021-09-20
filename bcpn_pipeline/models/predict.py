@@ -109,10 +109,9 @@ def optimize_params(X, y, groups, method):
         model = LogisticRegression(random_state=1008)
 
     elif method == 'RF':
-        n_jobs = 4
         param_grid = {
             'n_estimators': [50, 100, 250, 500],
-            'max_depth': [2, 5, 10, 25],
+            'max_depth': [3, 4, 5, 6],
         }
         model = RandomForestClassifier(oob_score=True, random_state=1008)
 
@@ -127,8 +126,7 @@ def optimize_params(X, y, groups, method):
         model = xgboost.XGBClassifier(random_state=1008)
 
     elif method == 'SVM':
-        n_jobs=4 # Memory seems to be blowing up with SVM as well...
-
+        n_jobs = 1
         ''' Kernel MUST be linear if we are going to use tune_sklearn, since we need either
         coefficients or feature importances in order to select the best model. '''
         param_grid = {
