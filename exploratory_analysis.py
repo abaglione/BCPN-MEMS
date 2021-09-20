@@ -599,7 +599,7 @@ for temporal_feats in temporal_featuresets:
     temporal_feats_lagged = temporal_feats.prep_for_modeling(n_lags)
 
     # Predict from only the temporal features first
-    res = models.predict(temporal_feats_lagged, n_lags, classifiers=['RF', 'XGB', 'SVM'], optimize=True)
+    res = models.predict(temporal_feats_lagged, n_lags, optimize=True)
     print(res)
     all_results.append(res)       
 

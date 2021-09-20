@@ -116,10 +116,10 @@ def optimize_params(X, y, method):
         model = RandomForestClassifier(oob_score=True, random_state=1008)
 
     elif method == 'XGB':
-#         n_jobs = None # Known bug with multiprocessing when using XGBoost necessitates this...
+        n_jobs = 1 # Known bug with multiprocessing when using XGBoost necessitates this...
         param_grid = {
             'n_estimators': [50, 100, 250, 500],
-            'max_depth': [3, 6, 9, 12],
+            'max_depth': [3, 4, 5, 6],
             'min_child_weight': [1, 3],
             'learning_rate': [0.01, 0.1, 0.3, 0.5]
         }
@@ -225,7 +225,7 @@ def train_test(X, y, ids, fs_name, method, n_lags, optimize, importance):
             clf = optimize_params(X_train, y_train, method)
 
             if method == 'XGB':
-                print(clf.estimator_.get_xgb_params())
+                print(clf.get_xgb_params())
             
         clf.fit(X_train, y_train)
 
