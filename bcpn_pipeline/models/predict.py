@@ -109,6 +109,7 @@ def optimize_params(X, y, groups, method):
         model = LogisticRegression(random_state=1008)
 
     elif method == 'RF':
+        n_jobs = 4
         param_grid = {
             'n_estimators': [50, 100, 250, 500],
             'max_depth': [2, 5, 10, 25],
@@ -126,7 +127,7 @@ def optimize_params(X, y, groups, method):
         model = xgboost.XGBClassifier(random_state=1008)
 
     elif method == 'SVM':
-        n_jobs=1 # Memory seems to be blowing up with SVM as well...
+        n_jobs=4 # Memory seems to be blowing up with SVM as well...
 
         ''' Kernel MUST be linear if we are going to use tune_sklearn, since we need either
         coefficients or feature importances in order to select the best model. '''
@@ -150,7 +151,9 @@ def optimize_params(X, y, groups, method):
     # For methods without intrinsic feature selection, use RFE
     if method != 'XGB' and method != 'RF':
         print('Using RFE')
-        estimator = RFE(model, step=0.5, verbose=3)
+        n_feats = X.shape[1] if X.shape[1] < 10 else 10
+        step = 0.5 if X.shape[1] > 20 else 1
+        estimator = RFE(model, n_features_to_select=n_feats, step=step, verbose=3)
         final_param_grid = {'estimator__' + k: v for k, v in param_grid.items()}
         
 #     grid = GridSearchCV(estimator=rfe, param_grid=final_param_grid,

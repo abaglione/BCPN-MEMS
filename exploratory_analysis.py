@@ -599,9 +599,9 @@ for temporal_feats in temporal_featuresets:
     temporal_feats_lagged = temporal_feats.prep_for_modeling(n_lags)
 
     # Predict from only the temporal features first
-    res = models.predict(temporal_feats_lagged, n_lags, optimize=True)
-    print(res)
-    all_results.append(res)       
+    # res = models.predict(temporal_feats_lagged, n_lags, classifiers=['LogisticR'], optimize=True)
+    # print(res)
+    # all_results.append(res)       
 
     i = 0
     for static_feats in static_featuresets:
@@ -617,7 +617,7 @@ for temporal_feats in temporal_featuresets:
         '''
         all_feats.handle_multicollinearity()
         
-        res = models.predict(all_feats, n_lags, classifiers=classifiers, optimize=True)
+        res = models.predict(all_feats, n_lags, classifiers=['LogisticR', 'RF', 'XGB'], optimize=True)
         print(res)
         all_results.append(res)                                 
 
