@@ -6,7 +6,7 @@ import pickle
 import xgboost
 from scipy import interp
 from sklearn.feature_selection import RFE
-from sklearn.model_selection import GridSearchCV, LeaveOneGroupOut, KFold
+from sklearn.model_selection import GridSearchCV, GroupKFold
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import SVC
@@ -98,7 +98,7 @@ def gather_shap(X, method, shap_values, test_indices):
 # Some modifications have been made to suit this project.
 
 
-def optimize_params(X, y, method):
+def optimize_params(X, y, groups, method):
     n_jobs = -1
     if method == 'LogisticR':
         param_grid = {
@@ -145,8 +145,9 @@ def optimize_params(X, y, method):
     if X.shape[1] > 30:
         step = 20
 
-    # Ensure we customize our CV to shuffle, to avoid outlier folds that perform worse
-    cv = KFold(n_splits=5, shuffle=True, random_state=2)   
+    # Need to be splitting at the subject level
+    # Thank you, Koesmahargyo et al.!
+    cv = GroupKFold(n_splits=5)   
     
     estimator = model
     final_param_grid = param_grid
@@ -164,33 +165,21 @@ def optimize_params(X, y, method):
                                    cv=cv, scoring='roc_auc',  n_jobs=n_jobs,
                                    verbose=2)
 
-#     grid.fit(X, y)
-    tune_search.fit(X, y)
+#     grid.fit(X, y, groups)
+    tune_search.fit(X, y, groups)
     
-    # This will return the best RFE instance
 #     return grid.best_estimator_
     return tune_search.best_estimator_
 
 
-def train_test(X, y, ids, fs_name, method, n_lags, optimize, importance):
+def train_test(X, y, groups, fs_name, method, n_lags, optimize, importance):
 
-    # Get cross validator
-    cv = None
-    groups = None
+    ''' Get cross validator
+        Need to be splitting at the subject level
+        Thank you, Koesmahargyo et al.! '''
     
-    if X.shape[0] > 500:
-        cv = KFold(n_splits=10, shuffle=True, random_state=5)        
-    else:
-        '''For a small dataset, leave one group out (LOGO) will function as our leave one subject out (LOSO) cross validation.
-        Participant IDs act as group labels. 
-        So, at each iteration, one "group" (i.e. one participant id)'s samples will be dropped.
-        Seems convoluded but works well.
-        '''
-        cv = LeaveOneGroupOut()
-        groups=ids
-        
-    print(cv)
-    
+    cv = GroupKFold(n_splits=5)         
+
     # Get a baseline classifier. May not be used if we are optimizing instead.
     clf = None
     if not optimize:
@@ -213,20 +202,17 @@ def train_test(X, y, ids, fs_name, method, n_lags, optimize, importance):
     train_res = [] # Array of dataframes of true vs pred labels
     test_res = [] # Array of dataframes of true vs pred labels
     all_shap_values = list() 
-    all_test_test_indices = list()
+    all_test_index = list()
 
-    for train_test_indices, test_test_indices in cv.split(X=X, y=y, groups=groups):
+    for train_index, test_index in cv.split(X=X, y=y, groups=groups):
 
-        X_train, y_train = X.loc[train_test_indices, :], y[train_test_indices]
-        X_test, y_test = X.loc[test_test_indices, :], y[test_test_indices]
+        X_train, y_train = X.loc[train_index, :], y[train_index]
+        X_test, y_test = X.loc[test_index, :], y[test_index]
 
+        # Run optimization using gridsearch and possibly RFE (depending on the model)
         if optimize:
-            # Get the best RFE instance
-            clf = optimize_params(X_train, y_train, method)
+            clf = optimize_params(X_train, y_train, groups[train_index], method)
 
-            if method == 'XGB':
-                print(clf.get_xgb_params())
-            
         clf.fit(X_train, y_train)
 
         # Be sure to store the training results so we can ensure we aren't overfitting later
@@ -262,13 +248,13 @@ def train_test(X, y, ids, fs_name, method, n_lags, optimize, importance):
                                         model=clf, method=method)
 
             all_shap_values.append(shap_values)
-            all_test_test_indices.append(test_test_indices)
+            all_test_index.append(test_index)
 
     if importance:
 
         # Get and save all the shap values
         X_test, shap_values = gather_shap(
-            X=X, method=method, shap_values=all_shap_values, test_indices=all_test_test_indices)
+            X=X, method=method, shap_values=all_shap_values, test_indices=all_test_index)
 
         filename = fs_name + '_' + method + '_' + str(n_lags) + '_lags'
         if optimize:
@@ -350,7 +336,7 @@ def predict(fs, n_lags=None, classifiers=None, optimize=True, importance=True):
 
         # Do baseline predictions first (no hyperparameter tuning)
         print('Starting with baseline classifier...')
-        res, mean_tpr, mean_fpr = train_test(X=X, y=y, ids=ids, fs_name=fs.name, method=method,
+        res, mean_tpr, mean_fpr = train_test(X=X, y=y, groups=ids, fs_name=fs.name, method=method,
                                   n_lags=n_lags, optimize=False, importance=False)
         
         print(res)
@@ -363,7 +349,7 @@ def predict(fs, n_lags=None, classifiers=None, optimize=True, importance=True):
 
         if optimize:
             print('Getting optimized classifier...')
-            res, mean_tpr, mean_fpr  = train_test(X=X, y=y, ids=ids, fs_name=fs.name, method=method,
+            res, mean_tpr, mean_fpr  = train_test(X=X, y=y, groups=ids, fs_name=fs.name, method=method,
                                                   n_lags=n_lags, optimize=optimize, importance=importance)
             
             print(res)
