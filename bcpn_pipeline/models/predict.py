@@ -126,6 +126,7 @@ def optimize_params(X, y, groups, method):
         model = xgboost.XGBClassifier(random_state=1008)
 
     elif method == 'SVM':
+        n_jobs=1 # Memory seems to be blowing up with SVM as well...
 
         ''' Kernel MUST be linear if we are going to use tune_sklearn, since we need either
         coefficients or feature importances in order to select the best model. '''
@@ -135,15 +136,9 @@ def optimize_params(X, y, groups, method):
             'kernel': ['linear']
         }
         
-        model = SVC(random_state=1008)
+        model = SVC(probability=True, random_state=1008)
 
     print('n_jobs = ' + str(n_jobs))
-
-    # Get RFE and gridsearch objects
-    # n_feats = 1.0 # select all features by default, in small datasets
-    step = 5
-    if X.shape[1] > 30:
-        step = 20
 
     # Need to be splitting at the subject level
     # Thank you, Koesmahargyo et al.!
@@ -155,7 +150,7 @@ def optimize_params(X, y, groups, method):
     # For methods without intrinsic feature selection, use RFE
     if method != 'XGB' and method != 'RF':
         print('Using RFE')
-        estimator = RFE(model, step=step, verbose=3)
+        estimator = RFE(model, step=0.5, verbose=3)
         final_param_grid = {'estimator__' + k: v for k, v in param_grid.items()}
         
 #     grid = GridSearchCV(estimator=rfe, param_grid=final_param_grid,
@@ -190,7 +185,7 @@ def train_test(X, y, groups, fs_name, method, n_lags, optimize, importance):
         elif method == 'XGB':
             clf = xgboost.XGBClassifier(random_state=1000)
         elif method == 'SVM':
-            clf = SVC(random_state=1000)
+            clf = SVC(probability=True, random_state=1000)
 
     # Begin train/test
     print('Training and testing with ' + method + ' model...')
