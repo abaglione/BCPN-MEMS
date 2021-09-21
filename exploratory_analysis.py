@@ -3,7 +3,7 @@
 
 # # Loading
 
-# In[ ]:
+# In[23]:
 
 
 # IO
@@ -52,22 +52,16 @@ plt.rcParams.update({'figure.autolayout': True})
 # plt.rcParams.update({'figure.facecolor': [1.0, 1.0, 1.0, 1.0]})
 
 # configure autoreloading of modules
-#get_ipython().run_line_magic('load_ext', 'autoreload')
-#get_ipython().run_line_magic('autoreload', '2')
+# get_ipython().run_line_magic('load_ext', 'autoreload')
+# get_ipython().run_line_magic('autoreload', '2')
 
 
-# In[ ]:
-
-
-
-
-
-# In[ ]:
+# In[24]:
 
 
 # Load the data
-datafile = Path("data/final_merged_set_v6.csv")
-#datafile = Path("/mnt/c/Users/ab5bt/Box Sync/Research/UVA/Medication Adherance/MEMS dataset/final_merged_set_v6.csv")
+# datafile = Path("data/final_merged_set_v6.csv")
+datafile = Path("/mnt/c/Users/ab5bt/Box Sync/Research/UVA/Medication Adherance/MEMS dataset/final_merged_set_v6.csv")
 df = pd.read_csv(datafile, parse_dates=False)
 df.head()
 
@@ -76,7 +70,7 @@ df.head()
 # Thank you to Jason Brownlee
 # https://machinelearningmastery.com/basic-data-cleaning-for-machine-learning/
 
-# In[ ]:
+# In[25]:
 
 
 # Instantiate a Dataset class
@@ -84,7 +78,7 @@ dataset = data.Dataset(df, id_col = 'PtID')
 dataset
 
 
-# In[ ]:
+# In[26]:
 
 
 # -------- Perform an initial cleaning of the dataset ----------
@@ -116,7 +110,7 @@ dataset.df.head()
 
 # ### Organize candidate features
 
-# In[ ]:
+# In[27]:
 
 
 ''' 
@@ -139,7 +133,7 @@ dataset.update_feature_categories({
 })
 
 
-# In[ ]:
+# In[28]:
 
 
 ''' This dataset has several repeated measures for validated instruments, 
@@ -187,7 +181,7 @@ for k,v in consts.SCORES.items():
     })
 
 
-# In[ ]:
+# In[29]:
 
 
 ''' Create a catch-all category of remaining features, to ensure we got everything '''
@@ -202,7 +196,7 @@ dataset.update_feature_categories({
 })
 
 
-# In[ ]:
+# In[30]:
 
 
 dataset.feature_categories
@@ -210,7 +204,7 @@ dataset.feature_categories
 
 # ### Generate new features
 
-# In[ ]:
+# In[31]:
 
 
 ''' Create new columns for several demographic and medical variables
@@ -250,12 +244,11 @@ print(dataset.df['mean_days_betw_exams'].head())
 
 # ### Create featuresets
 
-# In[ ]:
+# In[32]:
 
 
 static_featuresets = list()
 categories = list(dataset.feature_categories.keys())
-n_categories = len(categories)
 fact_subscales = ['A' + v['suffix'] for k,v in consts.SCORES.items() if v['subscale_include'] == True]
 drop_pairs = [
     ('FACTB Subset', ['A_FACTG'] + fact_subscales), # FACT-B only
@@ -265,24 +258,14 @@ drop_pairs = [
 
 print(fact_subscales)
 
-import itertools
-for i in range(1, n_categories + 1):
-    for t in list(itertools.combinations(categories,i)):
-        subcategories = list(t)
-        name = ' + '.join(subcategories)
-        
-        '''For each featureset, create three further subsets related to FACT scores '''
-        df = dataset.build_df_from_feature_categories(subcategories)
-        
-        if 'scores' in subcategories:
-            
-            # If this is a featureset that includes scores, add the FACT-related subsets
-            for (subset_name, drop_cols) in drop_pairs:
-                df2 = df.drop(columns=drop_cols) # Returns a copy
-                static_featuresets.append(features.Featureset(df=df2, name=name + ' - ' + subset_name, 
-                                                              id_col = dataset.id_col))
-        else:
-            static_featuresets.append(features.Featureset(df=df, name=name, id_col = dataset.id_col))
+df = dataset.build_df_from_feature_categories(categories)
+static_featuresets.append(features.Featureset(df=df, name=name + ' - ' + 'all_scores', id_col = dataset.id_col))
+
+# Create three further subsets related to FACT scores
+for (subset_name, drop_cols) in drop_pairs:
+    df2 = df.drop(columns=drop_cols) # Returns a copy
+    static_featuresets.append(features.Featureset(df=df2, name=name + ' - ' + subset_name, 
+                                                  id_col = dataset.id_col))
         
 static_featuresets
 
@@ -291,7 +274,7 @@ static_featuresets
 
 # Extract temporal features by converting main dataset's df from wide-form to long-form.
 
-# In[ ]:
+# In[33]:
 
 
 rows = []
@@ -377,7 +360,7 @@ df = df[df['MEMS_day'] <= 210]
 df
 
 
-# In[ ]:
+# In[34]:
 
 
 # Sanity check - Validate that we calculated days of adherence correctly
@@ -390,7 +373,7 @@ df2.head(10)
 
 # ### Generate new features
 
-# In[ ]:
+# In[35]:
 
 
 # Add binary indicator of any usage (not just number of times used) on a given day
@@ -413,14 +396,14 @@ df.head()
 # TODO - figure out a way to use the times of day? Not currently being used
 
 
-# In[ ]:
+# In[36]:
 
 
 # Exclude first month (ramp-up period during which time users were getting used to the MEMS caps)
 df = df[df['study_month'] > 0]
 
 
-# In[ ]:
+# In[37]:
 
 
 temporal_featuresets = list()
@@ -481,41 +464,18 @@ temporal_featuresets
 
 # # Prediction
 
-# ## Select A Subset of the Static Featuresets
-
-# In[ ]:
-
-
-selected_static_featuresets = []
-
-''' For now, let's hand-select
-Later we will run all possible combos...if it doesn't take for-freakin ever'''
-
-for subset in ['FACTB Subset', 'FACTG Subset', 'FACTB Subscales Subset']:
-    selected_static_featuresets.append(
-        next(
-            (fs for fs in static_featuresets 
-             if fs.name == 'demographics + study_behavior + medical + scores + other - ' + subset), 
-            None
-        )
-    )
-n_static_featuresets = len(selected_static_featuresets)
-print(n_static_featuresets)
-selected_static_featuresets
-
-
-# In[ ]:
+# In[38]:
 
 
 # Sanity check - this column should NOT be in the final set
-# selected_static_featuresets[3].df['total_days_8']
+# static_featuresets[3].df['total_days_8']
 
 
 # ## Run prediction tasks
 
 # ### Tune number of lags
 
-# In[ ]:
+# In[39]:
 
 
 target_col = 'adherent'
@@ -579,7 +539,7 @@ for temporal_feats in temporal_featuresets:
 # sns.lineplot(x='n_lags',y='test_accuracy', hue='featureset', data=results)
 
 
-# In[ ]:
+# In[42]:
 
 
 target_col = 'adherent'
@@ -599,7 +559,7 @@ for temporal_feats in temporal_featuresets:
     temporal_feats_lagged = temporal_feats.prep_for_modeling(n_lags)
 
     # Predict from only the temporal features first
-    res = models.predict(temporal_feats_lagged, n_lags, classifiers=['RF'], optimize=True)
+    res = models.predict(temporal_feats_lagged, n_lags, classifiers=['SVM'], optimize=True)
     print(res)
     all_results.append(res)       
 
@@ -616,9 +576,7 @@ for temporal_feats in temporal_featuresets:
         Yes this is clunky. Yes I'm tired...
         '''
         all_feats.handle_multicollinearity()
-        
-        res = models.predict(all_feats, n_lags, optimize=True, importance=False)
-        print(res)
+        res = models.predict(all_feats, n_lags, optimize=True)
         all_results.append(res)                                 
 
 
