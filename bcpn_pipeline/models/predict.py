@@ -17,16 +17,17 @@ import matplotlib.pyplot as plt
 
 
 def save_res_auc(res, mean_tpr, mean_fpr):
-    filename = res['featureset'] + '_' + str(res['n_lags']) + '_lags.csv'
+    filename = str(res['n_lags']) + '_lags.csv'
     
     # Save the auc metrics while we're here                    
     auc_df = pd.DataFrame({'test_mean_tpr': mean_tpr, 'test_mean_fpr': mean_fpr})
     auc_df['method'] = res['method']
     auc_df['optimized'] = res['optimized']
+    auc_df['n_lags'] = res['n_lags']
+    auc_df['featureset'] = res['featureset']
     auc_df.to_csv('results/final_auc_results_' + filename, mode='a', index=False)
                   
     pd.DataFrame([res]).to_csv('results/final_pred_results_' + filename, mode='a', index=False)
-
 
 def get_performance_metrics(df, tprs=None, aucs=None, mean_fpr=None, actual='actual', pred='pred'):
     stats = {}
@@ -328,6 +329,8 @@ def predict(fs, n_lags=None, classifiers=None, optimize=True, importance=True):
         classifiers = ['LogisticR', 'RF', 'XGB', 'SVM']
 
     all_results = []
+    common_fields = {'n_lags': n_lags, 'featureset': fs.name, 'n_features': X.shape[1],
+                    'n_samples': X.shape[0], 'target': fs.target_col }
     for method in classifiers:
 
         # Do baseline predictions first (no hyperparameter tuning)
@@ -335,10 +338,8 @@ def predict(fs, n_lags=None, classifiers=None, optimize=True, importance=True):
         res, mean_tpr, mean_fpr = train_test(X=X, y=y, groups=ids, fs_name=fs.name, method=method,
                                   n_lags=n_lags, optimize=False, importance=False)
         
-        print(res)
-        res.update({'n_lags': n_lags, 'featureset': fs.name, 'n_features': X.shape[1],
-                    'n_samples': X.shape[0], 'method': method, 'optimized': False,
-                    'target': fs.target_col})
+        res.update(common_fields)
+        res.update({'method': method, 'optimized': False})
         
         save_res_auc(res, mean_tpr, mean_fpr)
         all_results.append(res)
@@ -346,16 +347,12 @@ def predict(fs, n_lags=None, classifiers=None, optimize=True, importance=True):
         if optimize:
             print('Getting optimized classifier...')
             res, mean_tpr, mean_fpr  = train_test(X=X, y=y, groups=ids, fs_name=fs.name, method=method,
-                                                  n_lags=n_lags, optimize=optimize, importance=importance)
-            
-            print(res)
-                
-            res.update({'n_lags': n_lags, 'featureset': fs.name, 'n_features': X.shape[1],
-                        'n_samples': X.shape[0], 'method': method, 'optimized': True,
-                        'target': fs.target_col})
+                                                  n_lags=n_lags, optimize=True, importance=importance)
+           
+            res.update(common_fields)
+            res.update({'method': method, 'optimized': True})
             
             save_res_auc(res, mean_tpr, mean_fpr)
             all_results.append(res)
-            res = None
 
     return pd.DataFrame(all_results)
