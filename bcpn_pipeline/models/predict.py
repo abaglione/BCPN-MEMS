@@ -151,6 +151,7 @@ def optimize_params(X, y, groups, method):
     if method != 'XGB' and method != 'RF':
         print('Using RFE')
         n_feats = X.shape[1] if X.shape[1] < 10 else 10
+        print('--------------------- Selecting n_feats: ' + str(n_feats) + ' -----------------')
         step = 0.5 if X.shape[1] > 20 else 1
         estimator = RFE(model, n_features_to_select=n_feats, step=step, verbose=3)
         final_param_grid = {'estimator__' + k: v for k, v in param_grid.items()}
