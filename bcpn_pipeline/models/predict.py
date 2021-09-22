@@ -152,7 +152,7 @@ def optimize_params(X, y, groups, method):
         print('Using RFE')
         n_feats = X.shape[1] if X.shape[1] < 10 else 10
         print('--------------------- Selecting n_feats: ' + str(n_feats) + ' -----------------')
-        step = 0.5 if X.shape[1] > 20 else 1
+        step = 0.5 if X.shape[1] > 20 else 0.25
         estimator = RFE(model, n_features_to_select=n_feats, step=step, verbose=3)
         final_param_grid = {'estimator__' + k: v for k, v in param_grid.items()}
         
@@ -253,7 +253,10 @@ def train_test(X, y, groups, fs_name, method, n_lags, optimize, importance):
         # Get and save all the shap values
         X_test, shap_values = gather_shap(
             X=X, method=method, shap_values=all_shap_values, test_indices=all_test_index)
-
+        
+        if optimize and method != 'RF' and method !='XGB':
+            X_test = X_test.loc[:, clf.get_support()]
+        
         filename = fs_name + '_' + method + '_' + str(n_lags) + '_lags'
         if optimize:
             filename += '_optimized'
