@@ -127,7 +127,7 @@ def optimize_params(X, y, groups, method):
         model = xgboost.XGBClassifier(random_state=1008)
 
     elif method == 'SVM':
-        n_jobs = 1
+        n_jobs = None
         ''' Kernel MUST be linear if we are going to use tune_sklearn, since we need either
         coefficients or feature importances in order to select the best model. '''
         param_grid = {
