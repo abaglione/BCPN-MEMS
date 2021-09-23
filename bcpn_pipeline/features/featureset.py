@@ -20,6 +20,7 @@ class Featureset:
                           epoch=self.epoch)
         
     def transform(self):
+        print('Doing imputation, one-hot encoding, and scaling...')
         
         # Impute numerics and categoricals
         categoricals = self.df.select_dtypes('category')
@@ -46,6 +47,7 @@ class Featureset:
         assert self.df.isnull().values.any() == False, "Imputation failed! Investigate your dataframe."
         
     def get_lagged_featureset(self, n_lags):
+        print('Getting lagged features...')
         '''Generate lagged observations for temporal data, for each subject '''
         rows = []
 
@@ -74,6 +76,7 @@ class Featureset:
         return Featureset(df=res, name=self.name, id_col=self.id_col, target_col=self.target_col)
     
     def handle_multicollinearity(self):
+        print('Handling multicollinearity...')
         corr_matrix = self.df.corr()
 
         # --- Credit to Chris Albon ---
@@ -93,10 +96,12 @@ class Featureset:
         # Transform current featureset
         self.transform()
         
+        fs = self
+        
         # If this is a temporal fs
         if n_lags:
             # Get new, lagged featureset
-            fs = self.get_lagged_featureset(n_lags)
+            fs = fs.get_lagged_featureset(n_lags)
         
         fs.handle_multicollinearity()
         return fs
