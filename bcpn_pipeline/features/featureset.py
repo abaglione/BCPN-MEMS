@@ -94,14 +94,13 @@ class Featureset:
         self.transform()
         
         # If this is a temporal fs
-        if self.epoch:
-            if n_lags:
-                # Get new, lagged featureset
-                fs = self.get_lagged_featureset(n_lags)
-                fs.handle_multicollinearity()
-                return fs
-            else:
-                raise ValueError("n_lags is null, but should be int for featureset with epoch.")
+        if n_lags:
+            # Get new, lagged featureset
+            fs = self.get_lagged_featureset(n_lags)
+        
+        fs.handle_multicollinearity()
+        return fs
+
             
     def __repr__(self):    
         rep = '\n'.join([

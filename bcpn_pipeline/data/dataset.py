@@ -91,42 +91,19 @@ class Dataset:
                 
         print('Cleaning complete.')
 
-    def update_feature_categories(self, feature_categories, replace=False):
-        for category, cols in feature_categories.items():
-            if not self.feature_categories:
-                self.feature_categories = feature_categories
-            elif category not in self.feature_categories.keys() or replace == True:
-                self.feature_categories[category] = list(set(cols))
-            else:
-                self.feature_categories[category] = list(set(self.feature_categories[category] + cols))
-                
-    def build_df_from_feature_categories(self, categories='all'):
-        if categories == 'all':
-            return self.df[[self.id_col] +\
-            list(
-                 itertools.chain(
-                     *[v for k,v in self.feature_categories.items()]
-                     )
-                )
-            ]
-        else:
-            return self.df[[self.id_col] +\
-                list(
-                    itertools.chain(
-                        *[v for k,v in self.feature_categories.items() if k in categories]
-                        )
-                    )
-                ]
-        
-    def __repr__(self):
-        
-        n_cand_feats = 0 if not self.feature_categories else \
-                        len(list(itertools.chain(*[v for v in self.feature_categories.values()])))
-        
-        return '\n'.join([
-            f'Number of columns: {self.df.shape[1]}',
-            f'Number of candidate features: { n_cand_feats }'
-        ])
+def build_df_from_feature_categories(df, feat_categories, id_col):
+    # Note - will fail if col(s) not in df
+    return df[[id_col] + list(itertools.chain(*[v for k,v in feat_categories.items()]))]
+
+def __repr__(self):
+
+    n_cand_feats = 0 if not self.feature_categories else \
+                    len(list(itertools.chain(*[v for v in self.feature_categories.values()])))
+
+    return '\n'.join([
+        f'Number of columns: {self.df.shape[1]}',
+        f'Number of candidate features: { n_cand_feats }'
+    ])
 
 def binarize_col(x):
     try:

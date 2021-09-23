@@ -125,160 +125,160 @@ We'll also want to store things like the max score for each measure, which will 
 SCORES = {
     'BACS': {
         'semantic_label': 'Barriers to Care Scale',
-        'suffix': '_BACS',
+        'suffix': 'BACS',
         'max_val': 140, 
         'precalculated': False,
         'subscale_include': False
     },
     'BCPT': {
         'semantic_label': 'Breast Cancer Prevention Trial Symptom Checklist',
-        'suffix': '_BCPT',
+        'suffix': 'BCPT',
         'max_val': 168, 
         'precalculated': False,
         'subscale_include': False
     },
     'BCSK': {
         'semantic_label': 'Breast Cancer Survivorship Knowledge',
-        'suffix': '_BCSK',
+        'suffix': 'BCSK',
         'max_val': 32, 
         'precalculated': False,
         'subscale_include': False
     },
     'BMQ': {
         'semantic_label': 'Beliefs About Medicines Questionnaire',
-        'suffix': '_BMQ',
+        'suffix': 'BMQ',
         'max_val': 50, 
         'precalculated': False,
         'subscale_include': False
     },
     'CASE': {
         'semantic_label': 'CASE',
-        'suffix': '_CASE',
+        'suffix': 'CASE',
         'max_val': 48, 
         'precalculated': False,
         'subscale_include': False
     },
     'DECREG': {
         'semantic_label': 'Decision Regret Scale',
-        'suffix': '_DECREG',
+        'suffix': 'DECREG',
         'max_val': 25, 
         'precalculated': False,
         'subscale_include': False
     },
     'FACIT_SP': {
         'semantic_label': 'FACIT-SP',
-        'suffix': '_FACITSP',
+        'suffix': 'FACITSP',
         'max_val': 48, 
         'precalculated': False,
         'subscale_include': False
     },
     'FACT_B': {
         'semantic_label': 'FACT-B',
-        'suffix': '_FACTB',
+        'suffix': 'FACTB',
         'max_val': 148, 
         'precalculated': True,
         'subscale_include': False
     },
     'FACT_BC': {
         'semantic_label': 'FACT Breast Cancer Subscale',
-        'suffix': '_BC',
+        'suffix': 'BC',
         'max_val': 40, 
         'precalculated': True,
         'subscale_include': False # This is a FACT-G subscale, but we're more interested in FACT-B vs FACT-G
     },
     'FACT_G_PWB': {
         'semantic_label': 'FACT-G Physical Well-Being Subscale',
-        'suffix': '_PWB',
+        'suffix': 'PWB',
         'max_val': 28, 
         'precalculated': True,
         'subscale_include': True
     },
     'FACT_G_SWB': {
         'semantic_label': 'FACT-G Social Physical Well-Being Subscale',
-        'suffix': '_SWB',
+        'suffix': 'SWB',
         'max_val': 28,
         'precalculated': True,
         'subscale_include': True
     },
     'FACT_G_EWB': {
         'semantic_label': 'FACT-G Emotional Physical Well-Being Subscale',
-        'suffix': '_EWB',
+        'suffix': 'EWB',
         'max_val': 28, 
         'precalculated': True,
         'subscale_include': True
     },
     'FACT_G_FWB': {
         'semantic_label': 'FACT-G Functional Physical Well-Being Subscale',
-        'suffix': '_FWB',
+        'suffix': 'FWB',
         'max_val': 28, 
         'precalculated': True,
         'subscale_include': True
     },
     'FACT_G': {
         'semantic_label': 'FACT-G',
-        'suffix': '_FACTG',
+        'suffix': 'FACTG',
         'max_val': 108, 
         'precalculated': True,
         'subscale_include': False
     },
     'MDASI': {
         'semantic_label': 'MD Anderson Symptom Inventory',
-        'suffix': '_MDASI',
+        'suffix': 'MDASI',
         'max_val': 190, 
         'precalculated': False,
         'subscale_include': False
     },
     'MASES': {
         'semantic_label': 'Medication Adherence Self-Efficacy Scale',
-        'suffix': '_MASES',
+        'suffix': 'MASES',
         'max_val': 210, 
         'precalculated': False,
         'subscale_include': False
     },
 #     'MEDAD': {
 #         'semantic_label': 'Medication Adherence Scale',
-#         'suffix': '_MEDAD',
+#         'suffix': 'MEDAD',
 #         'max_val': -1, 
 #         'precalculated': False
 #     },
     'PEARL': {  # I think Kristi said don't use this
         'semantic_label': 'Pearlin Mastery Scale',
-        'suffix': '_PEARL',
+        'suffix': 'PEARL',
         'max_val': 35, 
         'precalculated': False,
         'subscale_include': False
     },
     'PTGI': {
         'semantic_label': 'Posttraumatic Growth Inventory',
-        'suffix': '_PTGI',
+        'suffix': 'PTGI',
         'max_val': 50, 
         'precalculated': False,
         'subscale_include': False
     },
     'PSAT': {
         'semantic_label': 'Patient Satisfaction',
-        'suffix': '_PSAT',
+        'suffix': 'PSAT',
         'max_val': 85, 
         'precalculated': False,
         'subscale_include': False
     },
     'PSS': {
         'semantic_label': 'Perceived Stress Scale',
-        'suffix': '_PSS',
+        'suffix': 'PSS',
         'max_val': 70, 
         'precalculated': False,
         'subscale_include': False
     },
     'PSUSP': {
         'semantic_label': 'Perceived Susceptibility Scale',
-        'suffix': '_PSUSP',
+        'suffix': 'PSUSP',
         'max_val': 15, 
         'precalculated': False,
         'subscale_include': False
     },
     'SS': {  
         'semantic_label': 'Krause and Borwaski-Clark Social Support Scale',
-        'suffix': '_SS',
+        'suffix': 'SS',
         'max_val': 42, 
         'precalculated': False,
         'subscale_include': False
