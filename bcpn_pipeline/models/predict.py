@@ -5,8 +5,9 @@ import shap
 import pickle
 import xgboost
 from scipy import interp
+from sklearn.preprocessing import MinMaxScaler
 from sklearn.feature_selection import RFE
-from sklearn.model_selection import GridSearchCV, GroupKFold
+from sklearn.model_selection import GridSearchCV, GroupKFold, LeaveOneGroupOut
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import SVC
@@ -142,7 +143,16 @@ def optimize_params(X, y, groups, method):
 
     # Need to be splitting at the subject level
     # Thank you, Koesmahargyo et al.!
-    cv = GroupKFold(n_splits=5)   
+    
+    ''' Leave one group out (LOGO) will function as our leave one subject out (LOSO) 
+        cross validation for small samples.
+        Participant IDs act as group labels. 
+        So, at each iteration, one 'group' (i.e. one participant id)'s samples will be dropped.
+        Seems convoluded but works well. '''
+    if X.shape[0] < 50:
+        cv = LeaveOneGroupOut()
+    else:
+        cv = GroupKFold(n_splits=5)   
     
     estimator = model
     final_param_grid = param_grid
@@ -176,7 +186,11 @@ def train_test(X, y, groups, fs_name, method, n_lags, optimize, importance):
         Need to be splitting at the subject level
         Thank you, Koesmahargyo et al.! '''
     
-    cv = GroupKFold(n_splits=5)         
+    cv = None
+    if X.shape[0] < 50:
+        cv = LeaveOneGroupOut()
+    else:
+        cv = GroupKFold(n_splits=5) 
 
     # Get a baseline classifier. May not be used if we are optimizing instead.
     clf = None
@@ -206,6 +220,14 @@ def train_test(X, y, groups, fs_name, method, n_lags, optimize, importance):
 
         X_train, y_train = X.loc[train_index, :], y[train_index]
         X_test, y_test = X.loc[test_index, :], y[test_index]
+        
+        ''' Perform Scaling
+            Thank you for your guidance, @Miriam Farber
+            https://stackoverflow.com/questions/45188319/sklearn-standardscaler-can-effect-test-matrix-result
+        '''
+        scaler = MinMaxScaler(feature_range=(0, 1))
+        X_train = scaler.fit_transform(X_train) 
+        X_test = scaler.transform(X_test)
 
         # Run optimization using gridsearch and possibly RFE (depending on the model)
         if optimize:
@@ -218,6 +240,8 @@ def train_test(X, y, groups, fs_name, method, n_lags, optimize, importance):
         y_test_pred = clf.predict(X_test)
         y_test_probas_ = clf.predict_proba(X_test)
 
+        # TODO: Modify this to work with LOGOCV - right now it only works with k-fold CV (gets avg metrics)
+        
         # Store TPR and AUC
         # Thank you sklearn documentation https://scikit-learn.org/stable/auto_examples/model_selection/plot_roc_crossval.html
         fpr, tpr, thresholds = roc_curve(y_test, y_test_probas_[:, 1])

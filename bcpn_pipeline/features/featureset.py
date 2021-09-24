@@ -13,7 +13,7 @@ class Featureset:
         self.epoch = epoch
         
     def transform(self):
-        print('Doing imputation, one-hot encoding, and scaling...')
+        print('Doing imputation, and one-hot encoding...')
         
         # Impute numerics and categoricals
         categoricals = self.df.select_dtypes('category')
@@ -30,11 +30,6 @@ class Featureset:
 
         # Exclude datetimes /non-numerics
         self.df = self.df.select_dtypes('number') # Assumes target col is numeric
-
-        # Perform Scaling
-        scaler = MinMaxScaler(feature_range=(0, 1))
-        to_scale = [col for col in self.df.columns if col != self.id_col and col != self.target_col]
-        self.df[to_scale] = scaler.fit_transform(self.df[to_scale]) 
         
         # Final sanity check to ensure imputation / transformations worked - none should be null!
         assert self.df.isnull().values.any() == False, "Imputation failed! Investigate your dataframe."
