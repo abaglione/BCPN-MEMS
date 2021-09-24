@@ -100,8 +100,8 @@ def get_epochs(df, start_date_col, pid_col, time_of_day_bins=None, time_of_day_l
     df['study_day'] = (df['datetime'] - df[start_date_col]).dt.days
     df['study_week'] = np.floor((df['datetime']- df[start_date_col]).dt.days / 7.0)
     
-    # https://stackoverflow.com/a/151211
-    df['study_month'] = 12 * (df['datetime'].dt.year - df[start_date_col].dt.year) + (df['datetime'].dt.month - df[start_date_col].dt.month)
+    # Rough estimate of month
+    df['study_month'] = np.floor((df['datetime']- df[start_date_col]).dt.days / 30.0)
     
     return df
 

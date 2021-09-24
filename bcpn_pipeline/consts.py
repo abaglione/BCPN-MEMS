@@ -117,6 +117,8 @@ CODEBOOK = {
     }
 }
 
+SCORE_PREFIXES = ['A_', 'B_', 'C_']
+
 ''' Many measures were administered at different time points (e.g., pre, mid-study, and post),
   so we'll need to use a regex to find all columns for each score category
 

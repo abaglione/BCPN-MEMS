@@ -12,9 +12,9 @@ class Featureset:
         self.target_col = target_col
         self.epoch = epoch
         
-    def create_combined_featureset(self, fs):
+    def create_combined_featureset(self, fs, merge_cols=None):
         # Assumes they have the same id_col
-        df = self.df.merge(fs.df, on=[self.id_col])
+        df = self.df.merge(fs.df, on=[self.id_col] + merge_cols)
         return Featureset(df=df, name=self.name + ' - ' + fs.name, id_col=self.id_col, 
                           target_col=self.target_col,
                           epoch=self.epoch)
