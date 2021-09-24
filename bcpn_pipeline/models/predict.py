@@ -296,16 +296,7 @@ def predict(fs, n_lags=None, classifiers=None, optimize=True, importance=True):
     X = fs.df[[col for col in fs.df.columns if col != fs.target_col]]
     y = fs.df[fs.target_col]
 
-    # Sanity check - Test with a random model first
-    print('Conducting sanity check using random model...')
-
-    res = pd.DataFrame(y).rename(columns={fs.target_col: 'actual'})
-    res['pred'] = np.random.randint(0, 1, size=len(res))
-    stats = get_performance_metrics(res, actual='actual', pred='pred')
-
-    # Make sure it's terrible :P
-    assert stats['accuracy'] < 0.5, 'The random model did too well. Go back and check for errors in your data and labels.'
-    print('Sanity check passed.')
+    # DONE - removed random model...not sure what I was thinking here
 
     #  ----- Handle class imbalance -----
     print('Conducting upsampling with SMOTE...')

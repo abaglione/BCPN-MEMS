@@ -12,13 +12,6 @@ class Featureset:
         self.target_col = target_col
         self.epoch = epoch
         
-    def create_combined_featureset(self, fs, merge_cols=None):
-        # Assumes they have the same id_col
-        df = self.df.merge(fs.df, on=[self.id_col] + merge_cols)
-        return Featureset(df=df, name=self.name + ' - ' + fs.name, id_col=self.id_col, 
-                          target_col=self.target_col,
-                          epoch=self.epoch)
-        
     def transform(self):
         print('Doing imputation, one-hot encoding, and scaling...')
         
@@ -100,10 +93,18 @@ class Featureset:
         
         # If this is a temporal fs
         if n_lags:
+        
             # Get new, lagged featureset
             fs = fs.get_lagged_featureset(n_lags)
         
+        # Eliminate collinear features
         fs.handle_multicollinearity()
+                   
+        # Ensure target column is last
+        end_col = self.df.pop(self.target_col)
+        self.df[self.target_col] = end_col
+
+        
         return fs
 
             
@@ -115,9 +116,10 @@ class Featureset:
         ])
         
         if self.epoch:
-            print(self.epoch)
             rep = rep + f'\nEpoch: { self.epoch }'
         
+        if self.target_col:
+            rep = rep + f'\nTarget: { self.target_col }'
         return rep
         
 def series_to_supervised(df, time_col, target_col, n_in=1, n_out=1, dropnan=True):
