@@ -17,11 +17,11 @@ from tune_sklearn import TuneGridSearchCV
 import matplotlib.pyplot as plt
 
 
-def save_res_auc(res, mean_tpr, mean_fpr):
+def save_res_auc(res, tpr, fpr):
     filename = str(res['n_lags']) + '_lags.csv'
     
     # Save the auc metrics while we're here                    
-    auc_df = pd.DataFrame({'test_mean_tpr': mean_tpr, 'test_mean_fpr': mean_fpr})
+    auc_df = pd.DataFrame({'test_tpr': tpr, 'test_fpr': fpr})
     auc_df['method'] = res['method']
     auc_df['optimized'] = res['optimized']
     auc_df['n_lags'] = res['n_lags']
@@ -30,7 +30,20 @@ def save_res_auc(res, mean_tpr, mean_fpr):
                   
     pd.DataFrame([res]).to_csv('results/final_pred_results_' + filename, mode='a', index=False)
 
-def get_performance_metrics(df, tprs=None, aucs=None, mean_fpr=None, actual='actual', pred='pred'):
+def get_mean_auc(tprs, aucs, mean_fpr):
+    mean_tpr = np.mean(tprs, axis=0)
+    mean_tpr[-1] = 1.0
+    mean_auc = auc(mean_fpr, mean_tpr)
+    std_auc = np.std(aucs)
+
+    return {'mean_auc': mean_auc, 'std_auc': std_auc}, mean_tpr, mean_fpr
+
+def get_agg_auc(y_all, y_probas_all):
+    # https://stackoverflow.com/questions/57756804/roc-curve-with-leave-one-out-cross-validation-in-sklearn
+    fpr, tpr, thresholds = roc_curve(y_all, y_probas_all)
+    return {'auc': auc(fpr, tpr)}, tpr, fpr
+    
+def get_performance_metrics(df, actual='actual', pred='pred'):
     stats = {}
 
     stats['accuracy'] = accuracy_score(y_true=df[actual], y_pred=df[pred])
@@ -42,22 +55,8 @@ def get_performance_metrics(df, tprs=None, aucs=None, mean_fpr=None, actual='act
     stats.update({'precision': precision, 'recall': recall, 
                   'f1_score': f1_score, 'support': support
                  })
-    
-    if tprs is not None and aucs is not None and mean_fpr is not None:
-        mean_tpr = np.mean(tprs, axis=0)
-        mean_tpr[-1] = 1.0
-        mean_auc = auc(mean_fpr, mean_tpr)
-        std_auc = np.std(aucs)
 
-        stats.update({'mean_auc': mean_auc, 'std_auc': std_auc})
-        
-        return stats, mean_tpr
-
-    else:
-        return stats
-
-# TODO - make shap work for non-test sets too
-
+    return stats
 
 def calc_shap(X_train, X_test, model, method):
     shap_values = None
@@ -151,8 +150,10 @@ def optimize_params(X, y, groups, method):
         Seems convoluded but works well. '''
     if X.shape[0] < 50:
         cv = LeaveOneGroupOut()
+        scoring = 'accuracy'
     else:
-        cv = GroupKFold(n_splits=5)   
+        cv = GroupKFold(n_splits=5)
+        scoring = 'roc_auc'
     
     estimator = model
     final_param_grid = param_grid
@@ -170,7 +171,7 @@ def optimize_params(X, y, groups, method):
 #                         cv=cv, scoring='accuracy', n_jobs=n_jobs, verbose=3)
 
     tune_search = TuneGridSearchCV(estimator=estimator, param_grid=final_param_grid,
-                                   cv=cv, scoring='roc_auc',  n_jobs=n_jobs,
+                                   cv=cv, scoring=scoring,  n_jobs=n_jobs,
                                    verbose=2)
 
 #     grid.fit(X, y, groups)
@@ -186,12 +187,19 @@ def train_test(X, y, groups, fs_name, method, n_lags, optimize, importance):
         Need to be splitting at the subject level
         Thank you, Koesmahargyo et al.! '''
     
-    cv = None
+    # Set up cross validation and AUC metrics
     if X.shape[0] < 50:
         cv = LeaveOneGroupOut()
+        auc_type = 'agg'
+        y_test_all = []
+        y_test_probas_all = []
     else:
         cv = GroupKFold(n_splits=5) 
-
+        auc_type = 'mean'
+        tprs = [] # Array of true positive rates
+        aucs = []# Array of AUC scores
+        mean_fpr = np.linspace(0, 1, 100)
+        
     # Get a baseline classifier. May not be used if we are optimizing instead.
     clf = None
     if not optimize:
@@ -206,10 +214,6 @@ def train_test(X, y, groups, fs_name, method, n_lags, optimize, importance):
 
     # Begin train/test
     print('Training and testing with ' + method + ' model...')
-   
-    tprs = [] # Array of true positive rates
-    aucs = []# Array of AUC scores
-    mean_fpr = np.linspace(0, 1, 100)
     
     train_res = [] # Array of dataframes of true vs pred labels
     test_res = [] # Array of dataframes of true vs pred labels
@@ -238,17 +242,20 @@ def train_test(X, y, groups, fs_name, method, n_lags, optimize, importance):
         # Be sure to store the training results so we can ensure we aren't overfitting later
         y_train_pred = clf.predict(X_train)
         y_test_pred = clf.predict(X_test)
-        y_test_probas_ = clf.predict_proba(X_test)
+        y_test_probas = clf.predict_proba(X_test)[:, 1]
 
-        # TODO: Modify this to work with LOGOCV - right now it only works with k-fold CV (gets avg metrics)
-        
-        # Store TPR and AUC
-        # Thank you sklearn documentation https://scikit-learn.org/stable/auto_examples/model_selection/plot_roc_crossval.html
-        fpr, tpr, thresholds = roc_curve(y_test, y_test_probas_[:, 1])
-        tprs.append(interp(mean_fpr, fpr, tpr))
-        tprs[-1][0] = 0.0
-        roc_auc = auc(fpr, tpr)
-        aucs.append(roc_auc)
+        if auc_type == 'agg':
+            y_test_all.append(y_test)
+            y_test_probas_all.append(y_test_probas)
+            
+        elif auc_type == 'mean':
+            # Store TPR and AUC
+            # Thank you sklearn documentation https://scikit-learn.org/stable/auto_examples/model_selection/plot_roc_crossval.html
+            fpr, tpr, thresholds = roc_curve(y_test, y_test_probas)
+            tprs.append(interp(mean_fpr, fpr, tpr))
+            tprs[-1][0] = 0.0
+            roc_auc = auc(fpr, tpr)
+            aucs.append(roc_auc)
         
         # Store predicted and actual vals in dataframe
         train_res.append(pd.DataFrame({'pred': y_train_pred, 'actual': y_train}))
@@ -280,7 +287,7 @@ def train_test(X, y, groups, fs_name, method, n_lags, optimize, importance):
         
         if optimize and method != 'RF' and method !='XGB':
             X_test = X_test.loc[:, clf.get_support()]
-        
+
         filename = fs_name + '_' + method + '_' + str(n_lags) + '_lags'
         if optimize:
             filename += '_optimized'
@@ -299,17 +306,26 @@ def train_test(X, y, groups, fs_name, method, n_lags, optimize, importance):
     train_res = pd.concat(train_res, copy=True)
     test_res = pd.concat(test_res, copy=True)
 
-    train_res = get_performance_metrics(train_res)
-    test_res, mean_tpr = get_performance_metrics(test_res, tprs, aucs, mean_fpr)
+    train_perf_metrics = get_performance_metrics(train_res)
+    test_perf_metrics = get_performance_metrics(test_res)
+    
+    if auc_type == 'agg':
+        test_auc_metrics, test_tpr, test_fpr = get_agg_auc(y_test_all, y_test_probas_all)
 
-    # Create a combined results dictionary
-    all_res = {'test_' + str(k): v for k, v in test_res.items()}
+    elif auc_type == 'mean':
+        test_auc_metrics, test_tpr, test_fpr = get_mean_auc(tprs, aucs, mean_fpr)
+    
+    ''' Create a combined results and auc dictionary
+        Add only the accuracy from the training results
+          just used to ensure we aren't overfitting'''
+    
+    all_res = {
+        **{'test_' + str(k): v for k, v in test_perf_metrics.items()},
+        **{'test_' + str(k): v for k, v in test_auc_metrics.items()},
+        **{'train_accuracy': train_perf_metrics['accuracy']}
+    }
 
-    # Add only the accuracy from the training results
-    # Just used to ensure we aren't overfitting
-    all_res['train_accuracy'] = train_res['accuracy']
-
-    return all_res, mean_tpr, mean_fpr
+    return all_res, test_tpr, test_fpr
 
 # Adapted from engagement study code - credit to Lee Cai, who co-authored the original code
 def predict(fs, n_lags=None, classifiers=None, optimize=True, importance=True):
@@ -354,24 +370,24 @@ def predict(fs, n_lags=None, classifiers=None, optimize=True, importance=True):
 
         # Do baseline predictions first (no hyperparameter tuning)
         print('Starting with baseline classifier...')
-        res, mean_tpr, mean_fpr = train_test(X=X, y=y, groups=ids, fs_name=fs.name, method=method,
-                                  n_lags=n_lags, optimize=False, importance=False)
+        res, tpr, fpr = train_test(X=X, y=y, groups=ids, fs_name=fs.name, method=method,
+                                   n_lags=n_lags, optimize=False, importance=False)
         
         res.update(common_fields)
         res.update({'method': method, 'optimized': False})
         
-        save_res_auc(res, mean_tpr, mean_fpr)
+        save_res_auc(res, tpr, fpr)
         all_results.append(res)
 
         if optimize:
             print('Getting optimized classifier...')
-            res, mean_tpr, mean_fpr  = train_test(X=X, y=y, groups=ids, fs_name=fs.name, method=method,
-                                                  n_lags=n_lags, optimize=True, importance=importance)
+            res, tpr, fpr  = train_test(X=X, y=y, groups=ids, fs_name=fs.name, method=method,
+                                        n_lags=n_lags, optimize=True, importance=importance)
            
             res.update(common_fields)
             res.update({'method': method, 'optimized': True})
             
-            save_res_auc(res, mean_tpr, mean_fpr)
+            save_res_auc(res, tpr, fpr)
             all_results.append(res)
 
     return pd.DataFrame(all_results)
