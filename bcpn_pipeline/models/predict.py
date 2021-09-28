@@ -226,16 +226,19 @@ def train_test(X, y, groups, fs_name, method, n_lags, optimize, importance):
 
     for train_index, test_index in cv.split(X=X, y=y, groups=groups):
 
-        X_train, y_train = X.loc[train_index, :], y[train_index]
-        X_test, y_test = X.loc[test_index, :], y[test_index]
+        X_train_unscaled, y_train = X.loc[train_index, :], y[train_index]
+        X_test_unscaled, y_test = X.loc[test_index, :], y[test_index]
         
         ''' Perform Scaling
             Thank you for your guidance, @Miriam Farber
             https://stackoverflow.com/questions/45188319/sklearn-standardscaler-can-effect-test-matrix-result
         '''
+        
         scaler = MinMaxScaler(feature_range=(0, 1))
-        X_train = scaler.fit_transform(X_train) 
-        X_test = scaler.transform(X_test)
+        X_train_scaled = scaler.fit_transform(X_train_unscaled)
+        X_train = pd.DataFrame(X_train_scaled, index=X_train_unscaled.index, columns=X_train_unscaled.columns)
+        X_test_scaled = scaler.transform(X_test_unscaled)
+        X_test = pd.DataFrame(X_test_scaled, index=X_test_unscaled.index, columns=X_test_unscaled.columns)
 
         # Run optimization using gridsearch and possibly RFE (depending on the model)
         if optimize:
