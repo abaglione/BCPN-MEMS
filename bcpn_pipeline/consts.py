@@ -1,6 +1,10 @@
 # Standard time-based constants
 SECONDS_IN_HOUR = 3600.0
 DAYS_IN_WEEK = 7.0
+DAYS_IN_MONTH = 30.0 # This is, of course, an avg estimate and is not precise
+
+# Standard time horizons over which we want to predict
+TARGET_HORIZONS = ['study_day', 'study_week', 'study_month']
 
 # The threshold under which participants are considered to be nonadherent
 ADHERENCE_THRESHOLD = 0.8

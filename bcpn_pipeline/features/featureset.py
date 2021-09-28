@@ -5,12 +5,12 @@ from sklearn.experimental import enable_iterative_imputer
 from sklearn.impute import IterativeImputer
 
 class Featureset:
-    def __init__(self, df, name, id_col, target_col=None, epoch=None):
+    def __init__(self, df, name, id_col, target_col=None, horizon=None):
         self.df = df
         self.name = name
         self.id_col = id_col
         self.target_col = target_col
-        self.epoch = epoch
+        self.horizon = horizon
         
     def transform(self):
         print('Doing imputation, and one-hot encoding...')
@@ -44,12 +44,12 @@ class Featureset:
             # Filter by subject
             subset = self.df[self.df[self.id_col] == unique_id]
 
-            # Sort by epoch
-            subset.sort_values(by=self.epoch, ascending=True)
+            # Sort by horizon
+            subset.sort_values(by=self.horizon, ascending=True)
 
             # Get features as supervised learning df
             # Temporal features will be lagged by a window of size 3
-            agg = series_to_supervised(subset.iloc[:, 1:], time_col = self.epoch, target_col = self.target_col, 
+            agg = series_to_supervised(subset.iloc[:, 1:], time_col = self.horizon, target_col = self.target_col, 
                                        n_in=n_lags, n_out=1) 
 
             # Be sure to add the unique id column back in, at the very beginning
@@ -110,8 +110,8 @@ class Featureset:
             f'Number of observations: {self.df.shape[0]}'
         ])
         
-        if self.epoch:
-            rep = rep + f'\nEpoch: { self.epoch }'
+        if self.horizon:
+            rep = rep + f'\nhorizon: { self.horizon }'
         
         if self.target_col:
             rep = rep + f'\nTarget: { self.target_col }'
