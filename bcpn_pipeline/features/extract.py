@@ -98,16 +98,12 @@ def get_temporal_feats(df, start_date_col, pid_col, time_of_day_bins=None, time_
     )
                                            
     # TODO - fix so days and everything else index from zero!
-    df['study_day'] = (df['datetime'] - df[start_date_col]).dt.days
+    df['study_day'] = (df['date'] - df[start_date_col]).dt.days
     
-    # Ensure we are indexing from 0
-#     df['study_day'] = df['study_day'].apply(
-#         lambda x: x - 1 if df[horizon].min() == 0 else x,
-#     )
-    df['study_week'] = np.floor((df['datetime']- df[start_date_col]).dt.days / 7.0)
+    df['study_week'] = np.floor((df['date']- df[start_date_col]).dt.days / 7.0)
     
     # Rough estimate of month
-    df['study_month'] = np.floor((df['datetime']- df[start_date_col]).dt.days / 30.0)
+    df['study_month'] = np.floor((df['date']- df[start_date_col]).dt.days / 30.0)
     
     
     return df

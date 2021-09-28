@@ -39,6 +39,10 @@ def get_mean_auc(tprs, aucs, mean_fpr):
     return {'mean_auc': mean_auc, 'std_auc': std_auc}, mean_tpr, mean_fpr
 
 def get_agg_auc(y_all, y_probas_all):
+
+    y_all = np.concatenate(y_all)
+    y_probas_all = np.concatenate(y_probas_all)
+    
     # https://stackoverflow.com/questions/57756804/roc-curve-with-leave-one-out-cross-validation-in-sklearn
     fpr, tpr, thresholds = roc_curve(y_all, y_probas_all)
     return {'auc': auc(fpr, tpr)}, tpr, fpr
