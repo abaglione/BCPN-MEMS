@@ -6,7 +6,7 @@ DAYS_IN_MONTH = 30.0 # This is, of course, an avg estimate and is not precise
 # Standard time horizons over which we want to predict
 TARGET_HORIZONS = ['study_day', 'study_week', 'study_month']
 
-# The threshold under which participants are considered to be nonadherent
+# Threshold under which participants are considered to be nonadherent
 ADHERENCE_THRESHOLD = 0.8
 
 # Specify columns to rename - want this project to be human-readable!

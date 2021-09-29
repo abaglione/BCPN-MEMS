@@ -99,10 +99,8 @@ def gather_shap(X, method, shap_values, test_indices):
 
     return X_test, all_shap_values
 
-# credit to Lee Cai, who bootstrapped the original function in a diff project
-# Some modifications have been made to suit this project.
-
-
+# Thank you to Lee Cai, who bootstrapped a similar function in a diff project
+# Modifications have been made to suit this project.
 def optimize_params(X, y, groups, method):
     n_jobs = -1
     if method == 'LogisticR':
@@ -144,21 +142,7 @@ def optimize_params(X, y, groups, method):
 
     print('n_jobs = ' + str(n_jobs))
 
-    # Need to be splitting at the subject level
-    # Thank you, Koesmahargyo et al.!
-    
-    ''' Leave one group out (LOGO) will function as our leave one subject out (LOSO) 
-        cross validation for small samples.
-        Participant IDs act as group labels. 
-        So, at each iteration, one 'group' (i.e. one participant id)'s samples will be dropped.
-        Seems convoluded but works well. '''
-    if X.shape[0] < 50:
-        cv = LeaveOneGroupOut()
-        scoring = 'accuracy'
-    else:
-        cv = GroupKFold(n_splits=5)
-        scoring = 'roc_auc'
-    
+    cv = GroupKFold(n_splits=5)
     estimator = model
     final_param_grid = param_grid
     
@@ -171,32 +155,28 @@ def optimize_params(X, y, groups, method):
         estimator = RFE(model, n_features_to_select=n_feats, step=step, verbose=3)
         final_param_grid = {'estimator__' + k: v for k, v in param_grid.items()}
         
-#     grid = GridSearchCV(estimator=rfe, param_grid=final_param_grid,
-#                         cv=cv, scoring='accuracy', n_jobs=n_jobs, verbose=3)
-
     tune_search = TuneGridSearchCV(estimator=estimator, param_grid=final_param_grid,
-                                   cv=cv, scoring=scoring,  n_jobs=n_jobs,
+                                   cv=cv, scoring='roc_auc',  n_jobs=n_jobs,
                                    verbose=2)
 
-#     grid.fit(X, y, groups)
     tune_search.fit(X, y, groups)
-    
-#     return grid.best_estimator_
     return tune_search.best_estimator_
 
 
 def train_test(X, y, groups, fs_name, method, n_lags, optimize, importance):
 
-    ''' Get cross validator
+    ''' Set up cross validation and AUC metrics
         Need to be splitting at the subject level
         Thank you, Koesmahargyo et al.! '''
     
-    # Set up cross validation and AUC metrics
-    if X.shape[0] < 50:
+    # For small sample sets, use Leave-One-Group-Out Cross-Validation
+    if X.shape[0] < 100:
         cv = LeaveOneGroupOut()
         auc_type = 'agg'
         y_test_all = []
         y_test_probas_all = []
+        
+    # Otherwise, use a Group K Fold
     else:
         cv = GroupKFold(n_splits=5) 
         auc_type = 'mean'
@@ -242,15 +222,17 @@ def train_test(X, y, groups, fs_name, method, n_lags, optimize, importance):
 
         # Run optimization using gridsearch and possibly RFE (depending on the model)
         if optimize:
+            print('n_feats before RFE: ' + str(X_train.shape[1]))
             clf = optimize_params(X_train, y_train, groups[train_index], method)
-
+            print('n_feats after RFE: ' + str(X_train.loc[:, clf.get_support()].shape[1]))
         clf.fit(X_train, y_train)
 
-        # Be sure to store the training results so we can ensure we aren't overfitting later
+        # Be sure to store the training results so we can check for overfitting later
         y_train_pred = clf.predict(X_train)
         y_test_pred = clf.predict(X_test)
         y_test_probas = clf.predict_proba(X_test)[:, 1]
 
+        # Store the AUC metrics according to the type of AUC we need (aggregate or mean)
         if auc_type == 'agg':
             y_test_all.append(y_test)
             y_test_probas_all.append(y_test_probas)
@@ -264,7 +246,7 @@ def train_test(X, y, groups, fs_name, method, n_lags, optimize, importance):
             roc_auc = auc(fpr, tpr)
             aucs.append(roc_auc)
         
-        # Store predicted and actual vals in dataframe
+        # Store predicted and actual target values in dataframe
         train_res.append(pd.DataFrame({'pred': y_train_pred, 'actual': y_train}))
         test_res.append(pd.DataFrame({'pred': y_test_pred, 'actual': y_test}))
 
@@ -273,7 +255,7 @@ def train_test(X, y, groups, fs_name, method, n_lags, optimize, importance):
             
             # Handle models which used RFE in a particular way
             if optimize and method != 'RF' and method !='XGB':
-                
+              
                 # Pass in just the selected features and underlying model (not the clf, which is an RFE instance)
                 shap_values = calc_shap(X_train=X_train.loc[:, clf.get_support()], X_test=X_test.loc[:, clf.get_support()], 
                                         model=clf.estimator_, method=method)
@@ -287,11 +269,11 @@ def train_test(X, y, groups, fs_name, method, n_lags, optimize, importance):
             all_test_index.append(test_index)
 
     if importance:
-
         # Get and save all the shap values
         X_test, shap_values = gather_shap(
             X=X, method=method, shap_values=all_shap_values, test_indices=all_test_index)
         
+        # Ensure we save only the features selected by the clf!
         if optimize and method != 'RF' and method !='XGB':
             X_test = X_test.loc[:, clf.get_support()]
 
@@ -316,6 +298,7 @@ def train_test(X, y, groups, fs_name, method, n_lags, optimize, importance):
     train_perf_metrics = get_performance_metrics(train_res)
     test_perf_metrics = get_performance_metrics(test_res)
     
+    # Calculate AUC Metrics
     if auc_type == 'agg':
         test_auc_metrics, test_tpr, test_fpr = get_agg_auc(y_test_all, y_test_probas_all)
 
@@ -334,7 +317,6 @@ def train_test(X, y, groups, fs_name, method, n_lags, optimize, importance):
 
     return all_res, test_tpr, test_fpr
 
-# Adapted from engagement study code - credit to Lee Cai, who co-authored the original code
 def predict(fs, n_lags=None, classifiers=None, optimize=True, importance=True):
 
     print('For featureset "' + fs.name + '"...')
