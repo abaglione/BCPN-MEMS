@@ -101,7 +101,7 @@ def gather_shap(X, method, shap_values, test_indices):
 
 # Thank you to Lee Cai, who bootstrapped a similar function in a diff project
 # Modifications have been made to suit this project.
-def optimize_params(X, y, groups, method):
+def optimize_params(X, y, groups, method, random_state):
     n_jobs = -1
     if method == 'LogisticR':
         param_grid = {
@@ -109,14 +109,14 @@ def optimize_params(X, y, groups, method):
             'penalty': ['l2'],
             'max_iter': [3000, 6000, 9000]
         }
-        model = LogisticRegression(random_state=1008)
+        model = LogisticRegression(random_state=random_state)
 
     elif method == 'RF':
         param_grid = {
             'n_estimators': [50, 100, 250, 500],
             'max_depth': [3, 4, 5, 6],
         }
-        model = RandomForestClassifier(oob_score=True, random_state=1008)
+        model = RandomForestClassifier(oob_score=True, random_state=random_state)
 
     elif method == 'XGB':
         n_jobs = 1 # Known bug with multiprocessing when using XGBoost necessitates this...
@@ -126,7 +126,7 @@ def optimize_params(X, y, groups, method):
             'min_child_weight': [1, 3],
             'learning_rate': [0.01, 0.1, 0.3, 0.5]
         }
-        model = xgboost.XGBClassifier(random_state=1008)
+        model = xgboost.XGBClassifier(random_state=random_state)
 
     elif method == 'SVM':
         n_jobs = None
@@ -138,7 +138,7 @@ def optimize_params(X, y, groups, method):
             'kernel': ['linear']
         }
         
-        model = SVC(probability=True, random_state=1008)
+        model = SVC(probability=True, random_state=random_state)
 
     print('n_jobs = ' + str(n_jobs))
 
@@ -163,7 +163,7 @@ def optimize_params(X, y, groups, method):
     return tune_search.best_estimator_
 
 
-def train_test(X, y, groups, fs_name, method, n_lags, optimize, importance):
+def train_test(X, y, groups, fs_name, method, n_lags, random_state, optimize, importance):
 
     ''' Set up cross validation and AUC metrics
         Need to be splitting at the subject level
@@ -188,13 +188,13 @@ def train_test(X, y, groups, fs_name, method, n_lags, optimize, importance):
     clf = None
     if not optimize:
         if method == 'LogisticR':
-            clf = LogisticRegression(random_state=1000)
+            clf = LogisticRegression(random_state=random_state)
         elif method == 'RF':
-            clf = RandomForestClassifier(max_depth=5, random_state=1000)
+            clf = RandomForestClassifier(max_depth=5, random_state=random_state)
         elif method == 'XGB':
-            clf = xgboost.XGBClassifier(random_state=1000)
+            clf = xgboost.XGBClassifier(random_state=random_state)
         elif method == 'SVM':
-            clf = SVC(probability=True, random_state=1000)
+            clf = SVC(probability=True, random_state=random_state)
 
     # Begin train/test
     print('Training and testing with ' + method + ' model...')
@@ -223,7 +223,7 @@ def train_test(X, y, groups, fs_name, method, n_lags, optimize, importance):
         # Run optimization using gridsearch and possibly RFE (depending on the model)
         if optimize:
             print('n_feats before RFE: ' + str(X_train.shape[1]))
-            clf = optimize_params(X_train, y_train, groups[train_index], method)
+            clf = optimize_params(X_train, y_train, groups[train_index], method, random_state)
             print('n_feats after RFE: ' + str(X_train.loc[:, clf.get_support()].shape[1]))
         clf.fit(X_train, y_train)
 
@@ -317,9 +317,10 @@ def train_test(X, y, groups, fs_name, method, n_lags, optimize, importance):
 
     return all_res, test_tpr, test_fpr
 
-def predict(fs, n_lags=None, classifiers=None, optimize=True, importance=True):
+def predict(fs, n_lags=None, classifiers=None, random_state=1008, optimize=True, importance=True):
 
     print('For featureset "' + fs.name + '"...')
+    print('Random State is ' + str(random_state))
 
     # Split into inputs and labels
     X = fs.df[[col for col in fs.df.columns if col != fs.target_col]]
@@ -329,7 +330,7 @@ def predict(fs, n_lags=None, classifiers=None, optimize=True, importance=True):
 
     #  ----- Handle class imbalance -----
     print('Conducting upsampling with SMOTE...')
-    smote = SMOTE(random_state=50)
+    smote = SMOTE(random_state=random_state)
 
     # Preserve columns
     cols = X.columns
@@ -360,7 +361,8 @@ def predict(fs, n_lags=None, classifiers=None, optimize=True, importance=True):
         # Do baseline predictions first (no hyperparameter tuning)
         print('Starting with baseline classifier...')
         res, tpr, fpr = train_test(X=X, y=y, groups=ids, fs_name=fs.name, method=method,
-                                   n_lags=n_lags, optimize=False, importance=False)
+                                   n_lags=n_lags, random_state=random_state, 
+                                   optimize=False, importance=False)
         
         res.update(common_fields)
         res.update({'method': method, 'optimized': False})
@@ -371,7 +373,8 @@ def predict(fs, n_lags=None, classifiers=None, optimize=True, importance=True):
         if optimize:
             print('Getting optimized classifier...')
             res, tpr, fpr  = train_test(X=X, y=y, groups=ids, fs_name=fs.name, method=method,
-                                        n_lags=n_lags, optimize=True, importance=importance)
+                                        n_lags=n_lags, random_state=random_state, 
+                                        optimize=True, importance=importance)
            
             res.update(common_fields)
             res.update({'method': method, 'optimized': True})
