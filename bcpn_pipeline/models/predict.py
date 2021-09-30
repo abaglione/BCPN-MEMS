@@ -16,7 +16,6 @@ from sklearn.pipeline import Pipeline
 from tune_sklearn import TuneGridSearchCV
 import matplotlib.pyplot as plt
 
-
 def save_res_auc(res, tpr, fpr):
     filename = str(res['n_lags']) + '_lags.csv'
     
@@ -142,7 +141,7 @@ def optimize_params(X, y, groups, method, random_state):
 
     print('n_jobs = ' + str(n_jobs))
 
-    cv = GroupKFold(n_splits=2)
+    cv = GroupKFold(n_splits=5)
     estimator = model
     final_param_grid = param_grid
     
@@ -178,7 +177,7 @@ def train_test(X, y, groups_col, fs_name, method, n_lags, random_state, optimize
         
     # Otherwise, use a Group K Fold
     else:
-        cv = GroupKFold(n_splits=2) 
+        cv = GroupKFold(n_splits=5) 
         auc_type = 'mean'
         tprs = [] # Array of true positive rates
         aucs = []# Array of AUC scores
@@ -220,9 +219,7 @@ def train_test(X, y, groups_col, fs_name, method, n_lags, random_state, optimize
         
         # Drop this column from the Xs - IMPORTANT!
         X_train.drop(columns=[groups_col], inplace=True)
-        print(X_train.shape[1])
         X_test.drop(columns=[groups_col], inplace=True)
-        print(X_test.shape[1])
         
         # Format y
         y_train = pd.Series(y_train_upsampled)
@@ -246,9 +243,9 @@ def train_test(X, y, groups_col, fs_name, method, n_lags, random_state, optimize
 
         # Run optimization using gridsearch and possibly RFE (depending on the model)
         if optimize:
-            print('n_feats before RFE: ' + str(X_train.shape[1]))
+#             print('n_feats before RFE: ' + str(X_train.shape[1]))
             clf = optimize_params(X_train, y_train, upsampled_groups, method, random_state)
-            print('n_feats after RFE: ' + str(X_train.loc[:, clf.get_support()].shape[1]))
+#             print('n_feats after RFE: ' + str(X_train.loc[:, clf.get_support()].shape[1]))
         
         clf.fit(X_train, y_train)
 
@@ -280,16 +277,11 @@ def train_test(X, y, groups_col, fs_name, method, n_lags, random_state, optimize
             
             # Handle models which used RFE in a particular way
             if optimize and method != 'RF' and method !='XGB':
-                print(X_train.loc[:, clf.get_support()])
-                print(X_train.loc[:, clf.get_support()].shape[1])
-                print(X_test.loc[:, clf.get_support()])
-                print(X_test.loc[:, clf.get_support()].shape[1])
               
                 # Pass in just the selected features and underlying model (not the clf, which is an RFE instance)
                 shap_values = calc_shap(X_train=X_train.loc[:, clf.get_support()], X_test=X_test.loc[:, clf.get_support()], 
                                         model=clf.estimator_, method=method)
             else:
-
                 # Pass in just the model (which IS the clf, in this case)
                 shap_values = calc_shap(X_train=X_train, X_test=X_test,
                                         model=clf, method=method)
@@ -297,11 +289,16 @@ def train_test(X, y, groups_col, fs_name, method, n_lags, random_state, optimize
             all_shap_values.append(shap_values)
             all_test_index.append(test_index)
 
+    # Get and save all the shap values
     if importance:
-        # Get and save all the shap values
-        X_test, shap_values = gather_shap(
-            X=X, method=method, shap_values=all_shap_values, test_indices=all_test_index)
+        ''' Don't forget to drop the groups col and unselected feats.
+            Otherwise, we'll have issues with alignment.'''
         
+        X_test, shap_values = gather_shap(
+            X=X.drop(columns=[groups_col]), method=method, 
+            shap_values=all_shap_values, test_indices=all_test_index
+        )
+           
         # Ensure we save only the features selected by the clf!
         if optimize and method != 'RF' and method !='XGB':
             X_test = X_test.loc[:, clf.get_support()]

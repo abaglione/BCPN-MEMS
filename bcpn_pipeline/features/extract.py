@@ -96,9 +96,9 @@ def get_temporal_feats(df, start_date_col, pid_col, time_of_day_bins=None, time_
     df['is_weekday'] = df['datetime'].apply(
         lambda x: 1 if x.day_name() != "Saturday" and x.day_name() != "Sunday" else 0
     )
-                                           
-    # TODO - fix so days and everything else index from zero!
-    df['study_day'] = (df['date'] - df[start_date_col]).dt.days
+    
+    # Custom adjustment to ensure days start at 0                                       
+    df['study_day'] = (df['date'] - df[start_date_col]).dt.days - 1
     
     df['study_week'] = np.floor((df['date']- df[start_date_col]).dt.days / 7.0)
     
