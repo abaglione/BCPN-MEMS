@@ -142,7 +142,7 @@ def optimize_params(X, y, groups, method, random_state):
 
     print('n_jobs = ' + str(n_jobs))
 
-    cv = GroupKFold(n_splits=5)
+    cv = GroupKFold(n_splits=2)
     estimator = model
     final_param_grid = param_grid
     
@@ -178,7 +178,7 @@ def train_test(X, y, groups_col, fs_name, method, n_lags, random_state, optimize
         
     # Otherwise, use a Group K Fold
     else:
-        cv = GroupKFold(n_splits=5) 
+        cv = GroupKFold(n_splits=2) 
         auc_type = 'mean'
         tprs = [] # Array of true positive rates
         aucs = []# Array of AUC scores
@@ -220,7 +220,9 @@ def train_test(X, y, groups_col, fs_name, method, n_lags, random_state, optimize
         
         # Drop this column from the Xs - IMPORTANT!
         X_train.drop(columns=[groups_col], inplace=True)
+        print(X_train.shape[1])
         X_test.drop(columns=[groups_col], inplace=True)
+        print(X_test.shape[1])
         
         # Format y
         y_train = pd.Series(y_train_upsampled)
@@ -278,6 +280,10 @@ def train_test(X, y, groups_col, fs_name, method, n_lags, random_state, optimize
             
             # Handle models which used RFE in a particular way
             if optimize and method != 'RF' and method !='XGB':
+                print(X_train.loc[:, clf.get_support()])
+                print(X_train.loc[:, clf.get_support()].shape[1])
+                print(X_test.loc[:, clf.get_support()])
+                print(X_test.loc[:, clf.get_support()].shape[1])
               
                 # Pass in just the selected features and underlying model (not the clf, which is an RFE instance)
                 shap_values = calc_shap(X_train=X_train.loc[:, clf.get_support()], X_test=X_test.loc[:, clf.get_support()], 
