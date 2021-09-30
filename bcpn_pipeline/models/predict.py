@@ -163,7 +163,7 @@ def optimize_params(X, y, groups, method, random_state):
     return tune_search.best_estimator_
 
 
-def train_test(X, y, groups, fs_name, method, n_lags, random_state, optimize, importance):
+def train_test(X, y, groups_col, fs_name, method, n_lags, random_state, optimize, importance):
 
     ''' Set up cross validation and AUC metrics
         Need to be splitting at the subject level
@@ -204,27 +204,47 @@ def train_test(X, y, groups, fs_name, method, n_lags, random_state, optimize, im
     all_shap_values = list() 
     all_test_index = list()
 
-    for train_index, test_index in cv.split(X=X, y=y, groups=groups):
-
-        X_train_unscaled, y_train = X.loc[train_index, :], y[train_index]
-        X_test_unscaled, y_test = X.loc[test_index, :], y[test_index]
+    for train_index, test_index in cv.split(X=X, y=y, groups=X[groups_col]):
+        X_train, y_train = X.loc[train_index, :], y[train_index]
+        X_test, y_test = X.loc[test_index, :], y[test_index]
+        
+        # Perform upsampling to handle class imbalance
+        print('Conducting upsampling with SMOTE...')
+        smote = SMOTE(random_state=random_state)
+        X_train_upsampled, y_train_upsampled = smote.fit_resample(X_train, y_train)
+        X_train = pd.DataFrame(X_train_upsampled, columns=X_train.columns, dtype=float)
+        
+        # Save the upsampled groups array
+        upsampled_groups = X_train[groups_col]
+        
+        # Drop this column from the Xs - IMPORTANT!
+        X_train.drop(columns=[groups_col], inplace=True)
+        X_test.drop(columns=[groups_col], inplace=True)
+        
+        # Format y
+        y_train = pd.Series(y_train_upsampled)
+        
+        print(X_train)
+        print(upsampled_groups)
+        print(y_train)
         
         ''' Perform Scaling
             Thank you for your guidance, @Miriam Farber
             https://stackoverflow.com/questions/45188319/sklearn-standardscaler-can-effect-test-matrix-result
         '''
-        
+        print('Performing MinMax scaling...')
         scaler = MinMaxScaler(feature_range=(0, 1))
-        X_train_scaled = scaler.fit_transform(X_train_unscaled)
-        X_train = pd.DataFrame(X_train_scaled, index=X_train_unscaled.index, columns=X_train_unscaled.columns)
-        X_test_scaled = scaler.transform(X_test_unscaled)
-        X_test = pd.DataFrame(X_test_scaled, index=X_test_unscaled.index, columns=X_test_unscaled.columns)
+        X_train_scaled = scaler.fit_transform(X_train)
+        X_train = pd.DataFrame(X_train_scaled, index=X_train.index, columns=X_train.columns)
+        X_test_scaled = scaler.fit_transform(X_test)
+        X_test = pd.DataFrame(X_test_scaled, index=X_test.index, columns=X_test.columns)
 
         # Run optimization using gridsearch and possibly RFE (depending on the model)
         if optimize:
             print('n_feats before RFE: ' + str(X_train.shape[1]))
-            clf = optimize_params(X_train, y_train, groups[train_index], method, random_state)
+            clf = optimize_params(X_train, y_train, upsampled_groups, method, random_state)
             print('n_feats after RFE: ' + str(X_train.loc[:, clf.get_support()].shape[1]))
+        
         clf.fit(X_train, y_train)
 
         # Be sure to store the training results so we can check for overfitting later
@@ -320,34 +340,12 @@ def train_test(X, y, groups, fs_name, method, n_lags, random_state, optimize, im
 def predict(fs, n_lags=None, classifiers=None, random_state=1008, optimize=True, importance=True):
 
     print('For featureset "' + fs.name + '"...')
-    print('Random State is ' + str(random_state))
 
     # Split into inputs and labels
     X = fs.df[[col for col in fs.df.columns if col != fs.target_col]]
     y = fs.df[fs.target_col]
-
+ 
     # DONE - removed random model...not sure what I was thinking here
-
-    #  ----- Handle class imbalance -----
-    print('Conducting upsampling with SMOTE...')
-    smote = SMOTE(random_state=random_state)
-
-    # Preserve columns
-    cols = X.columns
-
-    # Upsample using SMOTE
-    X, y = smote.fit_resample(X, y)
-
-    # Convert X back into a dataframe and ensure its id col is properly formatted
-    X = pd.DataFrame(X, columns=cols, dtype=float)
-    X[fs.id_col] = X[fs.id_col].astype(str)
-
-    # Format y
-    y = pd.Series(y)
-
-    # Pull out the id column so we can do LOOCV in the next steps
-    ids = X[fs.id_col]
-    X = X[[col for col in X.columns if col != fs.id_col]]
 
     # If no subset of classifiers is specified, run them all
     if not classifiers:
@@ -360,7 +358,7 @@ def predict(fs, n_lags=None, classifiers=None, random_state=1008, optimize=True,
 
         # Do baseline predictions first (no hyperparameter tuning)
         print('Starting with baseline classifier...')
-        res, tpr, fpr = train_test(X=X, y=y, groups=ids, fs_name=fs.name, method=method,
+        res, tpr, fpr = train_test(X=X, y=y, groups_col=fs.id_col, fs_name=fs.name, method=method,
                                    n_lags=n_lags, random_state=random_state, 
                                    optimize=False, importance=False)
         
@@ -372,7 +370,7 @@ def predict(fs, n_lags=None, classifiers=None, random_state=1008, optimize=True,
 
         if optimize:
             print('Getting optimized classifier...')
-            res, tpr, fpr  = train_test(X=X, y=y, groups=ids, fs_name=fs.name, method=method,
+            res, tpr, fpr  = train_test(X=X, y=y, groups_col=fs.id_col,  fs_name=fs.name, method=method,
                                         n_lags=n_lags, random_state=random_state, 
                                         optimize=True, importance=importance)
            

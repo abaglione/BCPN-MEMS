@@ -60,6 +60,9 @@ class Featureset:
 
         # Get all subjects' lagged features together
         res = pd.concat(rows, axis=0)
+        
+        # Be sure to reset the index!
+        res = res.reset_index(drop=True)
 
         return Featureset(df=res, name=self.name, id_col=self.id_col, target_col=self.target_col)
     
