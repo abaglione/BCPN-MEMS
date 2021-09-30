@@ -225,10 +225,6 @@ def train_test(X, y, groups_col, fs_name, method, n_lags, random_state, optimize
         # Format y
         y_train = pd.Series(y_train_upsampled)
         
-        print(X_train)
-        print(upsampled_groups)
-        print(y_train)
-        
         ''' Perform Scaling
             Thank you for your guidance, @Miriam Farber
             https://stackoverflow.com/questions/45188319/sklearn-standardscaler-can-effect-test-matrix-result
