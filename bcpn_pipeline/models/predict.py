@@ -211,8 +211,9 @@ def train_test(X, y, groups_col, fs_name, method, n_lags, random_state, optimize
         # Perform upsampling to handle class imbalance
         print('Conducting upsampling with SMOTE...')
         smote = SMOTE(random_state=random_state)
+        cols = X_train.columns
         X_train_upsampled, y_train_upsampled = smote.fit_resample(X_train, y_train)
-        X_train = pd.DataFrame(X_train_upsampled, columns=X_train.columns, dtype=float)
+        X_train = pd.DataFrame(X_train_upsampled, columns=cols, dtype=float)
         
         # Save the upsampled groups array
         upsampled_groups = X_train[groups_col]
@@ -234,10 +235,16 @@ def train_test(X, y, groups_col, fs_name, method, n_lags, random_state, optimize
         '''
         print('Performing MinMax scaling...')
         scaler = MinMaxScaler(feature_range=(0, 1))
+        
         X_train_scaled = scaler.fit_transform(X_train)
-        X_train = pd.DataFrame(X_train_scaled, index=X_train.index, columns=X_train.columns)
+        index = X_train.index
+        cols = X_train.columns
+        X_train = pd.DataFrame(X_train_scaled, index=index, columns=cols)
+        
         X_test_scaled = scaler.fit_transform(X_test)
-        X_test = pd.DataFrame(X_test_scaled, index=X_test.index, columns=X_test.columns)
+        index = X_test.index
+        cols = X_test.columns
+        X_test = pd.DataFrame(X_test_scaled, index=index, columns=cols)
 
         # Run optimization using gridsearch and possibly RFE (depending on the model)
         if optimize:
