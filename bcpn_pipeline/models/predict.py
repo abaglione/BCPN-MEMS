@@ -7,7 +7,7 @@ import xgboost
 from scipy import interp
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.feature_selection import RFE
-from sklearn.model_selection import GridSearchCV, GroupKFold, LeaveOneGroupOut
+from sklearn.model_selection import GridSearchCV, StratifiedGroupKFold, LeaveOneGroupOut
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import SVC
@@ -118,7 +118,6 @@ def optimize_params(X, y, groups, method, random_state):
         model = RandomForestClassifier(oob_score=True, random_state=random_state)
 
     elif method == 'XGB':
-        n_jobs = 1 # Known bug with multiprocessing when using XGBoost necessitates this...
         param_grid = {
             'n_estimators': [50, 100, 250, 500],
             'max_depth': [3, 4, 5, 6],
@@ -141,7 +140,7 @@ def optimize_params(X, y, groups, method, random_state):
 
     print('n_jobs = ' + str(n_jobs))
 
-    cv = GroupKFold(n_splits=5)
+    cv = StratifiedGroupKFold(n_splits=5)
     estimator = model
     final_param_grid = param_grid
     
@@ -168,20 +167,11 @@ def train_test(X, y, groups_col, fs_name, method, n_lags, random_state, optimize
         Need to be splitting at the subject level
         Thank you, Koesmahargyo et al.! '''
     
-    # For small sample sets, use Leave-One-Group-Out Cross-Validation
-    if X.shape[0] < 100:
-        cv = LeaveOneGroupOut()
-        auc_type = 'agg'
-        y_test_all = []
-        y_test_probas_all = []
-        
-    # Otherwise, use a Group K Fold
-    else:
-        cv = GroupKFold(n_splits=5) 
-        auc_type = 'mean'
-        tprs = [] # Array of true positive rates
-        aucs = []# Array of AUC scores
-        mean_fpr = np.linspace(0, 1, 100)
+    cv = StratifiedGroupKFold(n_splits=5)
+    auc_type = 'mean'
+    tprs = [] # Array of true positive rates
+    aucs = []# Array of AUC scores
+    mean_fpr = np.linspace(0, 1, 100)
         
     # Get a baseline classifier. May not be used if we are optimizing instead.
     clf = None
@@ -206,7 +196,9 @@ def train_test(X, y, groups_col, fs_name, method, n_lags, random_state, optimize
     for train_index, test_index in cv.split(X=X, y=y, groups=X[groups_col]):
         X_train, y_train = X.loc[train_index, :], y[train_index]
         X_test, y_test = X.loc[test_index, :], y[test_index]
-        
+        print(y_train)
+        print(y_test)
+
         # Perform upsampling to handle class imbalance
         print('Conducting upsampling with SMOTE...')
         smote = SMOTE(random_state=random_state)
