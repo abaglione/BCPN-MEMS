@@ -157,7 +157,7 @@ def optimize_params(X, y, groups, method, random_state):
                                    cv=cv, scoring='roc_auc',  n_jobs=n_jobs,
                                    verbose=2)
 
-    tune_search.fit(X, y, groups)
+    tune_search.fit(X.values, y.values, groups)
     return tune_search.best_estimator_
 
 
@@ -196,8 +196,6 @@ def train_test(X, y, groups_col, fs_name, method, n_lags, random_state, optimize
     for train_index, test_index in cv.split(X=X, y=y, groups=X[groups_col]):
         X_train, y_train = X.loc[train_index, :], y[train_index]
         X_test, y_test = X.loc[test_index, :], y[test_index]
-        print(y_train)
-        print(y_test)
 
         # Perform upsampling to handle class imbalance
         print('Conducting upsampling with SMOTE...')
@@ -242,9 +240,9 @@ def train_test(X, y, groups_col, fs_name, method, n_lags, random_state, optimize
         clf.fit(X_train, y_train)
 
         # Be sure to store the training results so we can check for overfitting later
-        y_train_pred = clf.predict(X_train)
-        y_test_pred = clf.predict(X_test)
-        y_test_probas = clf.predict_proba(X_test)[:, 1]
+        y_train_pred = clf.predict(X_train.values)
+        y_test_pred = clf.predict(X_test.values)
+        y_test_probas = clf.predict_proba(X_test.values)[:, 1]
 
         # Store the AUC metrics according to the type of AUC we need (aggregate or mean)
         if auc_type == 'agg':
