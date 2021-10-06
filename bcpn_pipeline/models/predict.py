@@ -118,16 +118,17 @@ def optimize_params(X, y, groups, method, random_state):
         model = RandomForestClassifier(oob_score=True, random_state=random_state)
 
     elif method == 'XGB':
+        n_jobs = 4
         param_grid = {
             'n_estimators': [50, 100, 250, 500],
             'max_depth': [3, 4, 5, 6],
             'min_child_weight': [1, 3],
-            'learning_rate': [0.01, 0.1, 0.3, 0.5]
+            'learning_rate': [0.01, 0.1, 0.3]
         }
         model = xgboost.XGBClassifier(random_state=random_state)
 
     elif method == 'SVM':
-        n_jobs = None
+        n_jobs = 4
         ''' Kernel MUST be linear if we are going to use tune_sklearn, since we need either
         coefficients or feature importances in order to select the best model. '''
         param_grid = {
@@ -237,7 +238,7 @@ def train_test(X, y, groups_col, fs_name, method, n_lags, random_state, optimize
             clf = optimize_params(X_train, y_train, upsampled_groups, method, random_state)
 #             print('n_feats after RFE: ' + str(X_train.loc[:, clf.get_support()].shape[1]))
         
-        clf.fit(X_train, y_train)
+        clf.fit(X_train.values, y_train.values)
 
         # Be sure to store the training results so we can check for overfitting later
         y_train_pred = clf.predict(X_train.values)
