@@ -79,7 +79,8 @@ class Featureset:
         # Finally, get a new list of nominal feats that mirrors the lagged structure
         mask = [any(col_og in col for col_og in self.nominal_cols) for col in res.columns]
         nominal_cols = list(compress(list(res.columns), mask))
-        nominal_cols = [col for col in nominal_cols if col != self.id_col]
+        nominal_cols = [col for col in nominal_cols if col != self.id_col
+                        and col != self.target_col]
 
         return Featureset(df=res, name=self.name, nominal_cols=nominal_cols, id_col=self.id_col, target_col=self.target_col)
     
