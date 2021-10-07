@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from imblearn.over_sampling import SMOTE
+from imblearn.over_sampling import SMOTENC
 import shap
 import pickle
 import xgboost
@@ -161,7 +161,7 @@ def optimize_params(X, y, groups, method, random_state):
     return tune_search.best_estimator_
 
 
-def train_test(X, y, groups_col, fs_name, method, n_lags, random_state, optimize, importance):
+def train_test(X, y, groups_col, fs_name, method, n_lags, random_state, nominal_idx, optimize, importance):
 
     ''' Set up cross validation and AUC metrics
         Need to be splitting at the subject level
@@ -196,12 +196,10 @@ def train_test(X, y, groups_col, fs_name, method, n_lags, random_state, optimize
     for train_index, test_index in cv.split(X=X, y=y, groups=X[groups_col]):
         X_train, y_train = X.loc[train_index, :], y[train_index]
         X_test, y_test = X.loc[test_index, :], y[test_index]
-        print(y_train)
-        print(y_test)
 
         # Perform upsampling to handle class imbalance
         print('Conducting upsampling with SMOTE...')
-        smote = SMOTE(random_state=random_state)
+        smote = SMOTENC(random_state=random_state, categorical_features=nominal_idx)
         cols = X_train.columns
         X_train_upsampled, y_train_upsampled = smote.fit_resample(X_train, y_train)
         X_train = pd.DataFrame(X_train_upsampled, columns=cols, dtype=float)
@@ -212,10 +210,11 @@ def train_test(X, y, groups_col, fs_name, method, n_lags, random_state, optimize
         # Drop this column from the Xs - IMPORTANT!
         X_train.drop(columns=[groups_col], inplace=True)
         X_test.drop(columns=[groups_col], inplace=True)
-        
+
         # Format y
         y_train = pd.Series(y_train_upsampled)
         
+        print(y_train)
         ''' Perform Scaling
             Thank you for your guidance, @Miriam Farber
             https://stackoverflow.com/questions/45188319/sklearn-standardscaler-can-effect-test-matrix-result
@@ -338,12 +337,15 @@ def train_test(X, y, groups_col, fs_name, method, n_lags, random_state, optimize
 def predict(fs, n_lags=None, classifiers=None, random_state=1008, optimize=True, importance=True):
 
     print('For featureset "' + fs.name + '"...')
+    
+    # Get list of indices of nominal columns for SMOTE-NC upsampling, used in train_test
+    nominal_idx = [fs.df.columns.get_loc(c) for c in fs.nominal_cols]
+    print('Nominal Indices')
+    print(nominal_idx)
 
     # Split into inputs and labels
     X = fs.df[[col for col in fs.df.columns if col != fs.target_col]]
     y = fs.df[fs.target_col]
- 
-    # DONE - removed random model...not sure what I was thinking here
 
     # If no subset of classifiers is specified, run them all
     if not classifiers:
@@ -352,12 +354,13 @@ def predict(fs, n_lags=None, classifiers=None, random_state=1008, optimize=True,
     all_results = []
     common_fields = {'n_lags': n_lags, 'featureset': fs.name, 'n_features': X.shape[1],
                     'n_samples': X.shape[0], 'target': fs.target_col }
+    
     for method in classifiers:
 
         # Do baseline predictions first (no hyperparameter tuning)
         print('Starting with baseline classifier...')
         res, tpr, fpr = train_test(X=X, y=y, groups_col=fs.id_col, fs_name=fs.name, method=method,
-                                   n_lags=n_lags, random_state=random_state, 
+                                   n_lags=n_lags, random_state=random_state, nominal_idx=nominal_idx,
                                    optimize=False, importance=False)
         
         res.update(common_fields)
@@ -369,7 +372,7 @@ def predict(fs, n_lags=None, classifiers=None, random_state=1008, optimize=True,
         if optimize:
             print('Getting optimized classifier...')
             res, tpr, fpr  = train_test(X=X, y=y, groups_col=fs.id_col,  fs_name=fs.name, method=method,
-                                        n_lags=n_lags, random_state=random_state, 
+                                        n_lags=n_lags, random_state=random_state, nominal_idx=nominal_idx,
                                         optimize=True, importance=importance)
            
             res.update(common_fields)

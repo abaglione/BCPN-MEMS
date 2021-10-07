@@ -3,14 +3,21 @@ import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.experimental import enable_iterative_imputer
 from sklearn.impute import IterativeImputer
+from itertools import compress
 
 class Featureset:
-    def __init__(self, df, name, id_col, target_col=None, horizon=None):
+    def __init__(self, df, name, id_col, nominal_cols=None, target_col=None, horizon=None):
         self.df = df
         self.name = name
         self.id_col = id_col
         self.target_col = target_col
         self.horizon = horizon
+        
+        '''Used to store list of non-continuous columns (e.g., yes/no columns or
+        ones that have been one-hot encoded) '''
+        self.nominal_cols = [self.id_col]
+        if nominal_cols:
+            self.nominal_cols += nominal_cols
         
     def transform(self):
         print('Doing imputation, and one-hot encoding...')
@@ -25,8 +32,13 @@ class Featureset:
                         set([self.id_col]))
         self.df[numerics] = imputer.fit_transform(self.df[numerics])
 
-        # One-hot encode categoricals
+        '''One-hot encode categoricals
+           We'll want to add any new columns to our list of nominal columsn - use python magic to make it happen
+        '''
+        cols_og = self.df.columns
         self.df = pd.get_dummies(self.df, columns=self.df.select_dtypes('category').columns)
+        cols_all = self.df.columns
+        self.nominal_cols += list(set(cols_all) - set(cols_og))
 
         # Exclude datetimes /non-numerics
         self.df = self.df.select_dtypes('number') # Assumes target col is numeric
@@ -63,8 +75,13 @@ class Featureset:
         
         # Be sure to reset the index!
         res = res.reset_index(drop=True)
+        
+        # Finally, get a new list of nominal feats that mirrors the lagged structure
+        mask = [any(col_og in col for col_og in self.nominal_cols) for col in res.columns]
+        nominal_cols = list(compress(list(res.columns), mask))
+        nominal_cols = [col for col in nominal_cols if col != self.id_col]
 
-        return Featureset(df=res, name=self.name, id_col=self.id_col, target_col=self.target_col)
+        return Featureset(df=res, name=self.name, nominal_cols=nominal_cols, id_col=self.id_col, target_col=self.target_col)
     
     def handle_multicollinearity(self):
         print('Handling multicollinearity...')
