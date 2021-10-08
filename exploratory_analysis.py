@@ -507,7 +507,7 @@ print(t_feats)
 
 # Get a lagged featureset
 t_feats_lagged = t_feats.prep_for_modeling(n_lags)
-res = models.predict(t_feats_lagged, n_lags, classifiers=['LogisticR', 'RF', 'SVM'], optimize=True)
+res = models.predict(t_feats_lagged, n_lags, classifiers=['RF', 'SVM'], optimize=True)
 res   
 
 

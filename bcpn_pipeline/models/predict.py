@@ -110,7 +110,6 @@ def optimize_params(X, y, groups, method, random_state):
     elif method == 'RF':
         param_grid = {
             'n_estimators': [50, 100, 250, 500],
-            'max_features': [0.25, 'auto'],
             'max_depth': [1, 2, 3, 4, 5],
             'min_samples_leaf': [1, 2, 3]
         }
@@ -130,7 +129,7 @@ def optimize_params(X, y, groups, method, random_state):
         n_jobs = 1
         param_grid = {
             'C': [1, 10, 100],
-            'gamma': [1, 0.1, 0.01, 0.001, 'scale'],
+            'gamma': [1, 0.1, 0.01, 0.001],
             'kernel': ['rbf'] # Robust to noise - no need to do RFE
         }
         
@@ -138,7 +137,7 @@ def optimize_params(X, y, groups, method, random_state):
 
     print('n_jobs = ' + str(n_jobs))
 
-    cv = StratifiedGroupKFold(n_splits=5, shuffle=True)
+    cv = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=random_state)
     tune_search = TuneGridSearchCV(estimator=model, param_grid=param_grid,
                                    cv=cv, scoring='roc_auc',  n_jobs=n_jobs,
                                    verbose=2)
@@ -153,7 +152,7 @@ def train_test(X, y, groups_col, fs_name, method, n_lags, random_state, nominal_
         Need to be splitting at the subject level
         Thank you, Koesmahargyo et al.! '''
     
-    cv = StratifiedGroupKFold(n_splits=5, shuffle=True)
+    cv = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=random_state)
     auc_type = 'mean'
     tprs = [] # Array of true positive rates
     aucs = []# Array of AUC scores
