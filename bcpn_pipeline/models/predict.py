@@ -6,7 +6,7 @@ import pickle
 import xgboost
 from scipy import interp
 from sklearn.preprocessing import MinMaxScaler
-from sklearn.feature_selection import RFE
+from sklearn.feature_selection import SelectFromModel
 from sklearn.model_selection import GridSearchCV, StratifiedGroupKFold, LeaveOneGroupOut
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
@@ -17,17 +17,13 @@ from tune_sklearn import TuneGridSearchCV
 import matplotlib.pyplot as plt
 
 def save_res_auc(res, tpr, fpr):
-    filename = str(res['n_lags']) + '_lags.csv'
-    
-    # Save the auc metrics while we're here                    
     auc_df = pd.DataFrame({'test_tpr': tpr, 'test_fpr': fpr})
     auc_df['method'] = res['method']
     auc_df['optimized'] = res['optimized']
     auc_df['n_lags'] = res['n_lags']
     auc_df['featureset'] = res['featureset']
-    auc_df.to_csv('results/final_auc_results_' + filename, mode='a', index=False)
-                  
-    pd.DataFrame([res]).to_csv('results/final_pred_results_' + filename, mode='a', index=False)
+    auc_df.to_csv('results/auc_results', mode='a', index=False)
+    pd.DataFrame([res]).to_csv('results/pred_results.csv', mode='a', index=False)
 
 def get_mean_auc(tprs, aucs, mean_fpr):
     mean_tpr = np.mean(tprs, axis=0)
@@ -68,9 +64,9 @@ def calc_shap(X_train, X_test, model, method):
         shap_values = shap.LinearExplainer(model, X_train).shap_values(X_test)
     elif method == 'RF' or method == 'XGB':
         shap_values = shap.TreeExplainer(model).shap_values(X_test)
-    else:
+    elif method == 'SVM':
         X_train_summary = shap.kmeans(X_train, 10)
-        shap_values = shap.KernelExplainer(model.predict, X_train_summary).shap_values(X_test)
+        shap_values = shap.KernelExplainer(model.predict_proba, X_train).shap_values(X_test)
 
     return shap_values
 
@@ -105,7 +101,8 @@ def optimize_params(X, y, groups, method, random_state):
     if method == 'LogisticR':
         param_grid = {
             'C': np.logspace(-4, 4, 20),
-            'penalty': ['l2'],
+            'penalty': ['l1'],  # Use LASSO for feature selection
+            'solver': ['liblinear'],
             'max_iter': [3000, 6000, 9000]
         }
         model = LogisticRegression(random_state=random_state)
@@ -113,48 +110,36 @@ def optimize_params(X, y, groups, method, random_state):
     elif method == 'RF':
         param_grid = {
             'n_estimators': [50, 100, 250, 500],
-            'max_depth': [3, 4, 5, 6],
+            'max_features': [0.25, 'auto'],
+            'max_depth': [1, 2, 3, 4, 5],
+            'min_samples_leaf': [1, 2, 3]
         }
         model = RandomForestClassifier(oob_score=True, random_state=random_state)
 
     elif method == 'XGB':
-        n_jobs = 4
+        n_jobs = 3
         param_grid = {
             'n_estimators': [50, 100, 250, 500],
-            'max_depth': [3, 4, 5, 6],
+            'max_depth': [1, 2, 3],
             'min_child_weight': [1, 3],
             'learning_rate': [0.01, 0.1, 0.3]
         }
         model = xgboost.XGBClassifier(random_state=random_state)
 
     elif method == 'SVM':
-        n_jobs = 4
-        ''' Kernel MUST be linear if we are going to use tune_sklearn, since we need either
-        coefficients or feature importances in order to select the best model. '''
+        n_jobs = 1
         param_grid = {
             'C': [1, 10, 100],
-            'gamma': [1, 0.1, 0.01, 0.001, 0.0001],
-            'kernel': ['linear']
+            'gamma': [1, 0.1, 0.01, 0.001, 'scale'],
+            'kernel': ['rbf'] # Robust to noise - no need to do RFE
         }
         
         model = SVC(probability=True, random_state=random_state)
 
     print('n_jobs = ' + str(n_jobs))
 
-    cv = StratifiedGroupKFold(n_splits=5)
-    estimator = model
-    final_param_grid = param_grid
-    
-    # For methods without intrinsic feature selection, use RFE
-    if method != 'XGB' and method != 'RF':
-        print('Using RFE')
-        n_feats = X.shape[1] if X.shape[1] < 10 else 10
-        print('--------------------- Selecting n_feats: ' + str(n_feats) + ' -----------------')
-        step = 0.5 if X.shape[1] > 20 else 0.25
-        estimator = RFE(model, n_features_to_select=n_feats, step=step, verbose=3)
-        final_param_grid = {'estimator__' + k: v for k, v in param_grid.items()}
-        
-    tune_search = TuneGridSearchCV(estimator=estimator, param_grid=final_param_grid,
+    cv = StratifiedGroupKFold(n_splits=5, shuffle=True)
+    tune_search = TuneGridSearchCV(estimator=model, param_grid=param_grid,
                                    cv=cv, scoring='roc_auc',  n_jobs=n_jobs,
                                    verbose=2)
 
@@ -168,7 +153,7 @@ def train_test(X, y, groups_col, fs_name, method, n_lags, random_state, nominal_
         Need to be splitting at the subject level
         Thank you, Koesmahargyo et al.! '''
     
-    cv = StratifiedGroupKFold(n_splits=5)
+    cv = StratifiedGroupKFold(n_splits=5, shuffle=True)
     auc_type = 'mean'
     tprs = [] # Array of true positive rates
     aucs = []# Array of AUC scores
@@ -178,7 +163,7 @@ def train_test(X, y, groups_col, fs_name, method, n_lags, random_state, nominal_
     clf = None
     if not optimize:
         if method == 'LogisticR':
-            clf = LogisticRegression(random_state=random_state)
+            clf = LogisticRegression(random_state=random_state, solver='liblinear')
         elif method == 'RF':
             clf = RandomForestClassifier(max_depth=5, random_state=random_state)
         elif method == 'XGB':
@@ -215,7 +200,6 @@ def train_test(X, y, groups_col, fs_name, method, n_lags, random_state, nominal_
         # Format y
         y_train = pd.Series(y_train_upsampled)
         
-        print(y_train)
         ''' Perform Scaling
             Thank you for your guidance, @Miriam Farber
             https://stackoverflow.com/questions/45188319/sklearn-standardscaler-can-effect-test-matrix-result
@@ -233,12 +217,9 @@ def train_test(X, y, groups_col, fs_name, method, n_lags, random_state, nominal_
         cols = X_test.columns
         X_test = pd.DataFrame(X_test_scaled, index=index, columns=cols)
 
-        # Run optimization using gridsearch and possibly RFE (depending on the model)
         if optimize:
-#             print('n_feats before RFE: ' + str(X_train.shape[1]))
             clf = optimize_params(X_train, y_train, upsampled_groups, method, random_state)
-#             print('n_feats after RFE: ' + str(X_train.loc[:, clf.get_support()].shape[1]))
-        
+
         clf.fit(X_train.values, y_train.values)
 
         # Be sure to store the training results so we can check for overfitting later
@@ -266,18 +247,8 @@ def train_test(X, y, groups_col, fs_name, method, n_lags, random_state, nominal_
 
         # Calculate feature importance while we're here, using SHAP
         if importance:
-            
-            # Handle models which used RFE in a particular way
-            if optimize and method != 'RF' and method !='XGB':
-              
-                # Pass in just the selected features and underlying model (not the clf, which is an RFE instance)
-                shap_values = calc_shap(X_train=X_train.loc[:, clf.get_support()], X_test=X_test.loc[:, clf.get_support()], 
-                                        model=clf.estimator_, method=method)
-            else:
-                # Pass in just the model (which IS the clf, in this case)
-                shap_values = calc_shap(X_train=X_train, X_test=X_test,
-                                        model=clf, method=method)
-
+            shap_values = calc_shap(X_train=X_train, X_test=X_test,
+                                    model=clf, method=method)
             all_shap_values.append(shap_values)
             all_test_index.append(test_index)
 
@@ -290,10 +261,6 @@ def train_test(X, y, groups_col, fs_name, method, n_lags, random_state, nominal_
             X=X.drop(columns=[groups_col]), method=method, 
             shap_values=all_shap_values, test_indices=all_test_index
         )
-           
-        # Ensure we save only the features selected by the clf!
-        if optimize and method != 'RF' and method !='XGB':
-            X_test = X_test.loc[:, clf.get_support()]
 
         filename = fs_name + '_' + method + '_' + str(n_lags) + '_lags'
         if optimize:
@@ -337,10 +304,8 @@ def train_test(X, y, groups_col, fs_name, method, n_lags, random_state, nominal_
 
 def predict(fs, n_lags=None, classifiers=None, random_state=1008, optimize=True, importance=True):
 
-    print('For featureset "' + fs.name + '"...')
-    
     # Get list of indices of nominal columns for SMOTE-NC upsampling, used in train_test
-    nominal_idx = [fs.df.columns.get_loc(c) for c in fs.nominal_cols]
+    nominal_idx = sorted([fs.df.columns.get_loc(c) for c in fs.nominal_cols])
     print('Nominal Indices')
     print(nominal_idx)
 

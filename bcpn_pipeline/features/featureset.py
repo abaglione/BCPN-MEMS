@@ -99,6 +99,9 @@ class Featureset:
         
         if len(to_drop) > 0:
             self.df.drop(columns=to_drop, axis=1, inplace=True)
+
+        nom_to_drop = [col for col in to_drop if col in self.nominal_cols]
+        self.nominal_cols = list(set(self.nominal_cols) - set(nom_to_drop))
     
     def prep_for_modeling(self, n_lags=None):
         
