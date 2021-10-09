@@ -164,7 +164,7 @@ def train_test(X, y, groups_col, fs_name, method, n_lags, random_state, nominal_
         if method == 'LogisticR':
             clf = LogisticRegression(random_state=random_state, solver='liblinear')
         elif method == 'RF':
-            clf = RandomForestClassifier(max_depth=5, random_state=random_state)
+            clf = RandomForestClassifier(max_depth=1, random_state=random_state)
         elif method == 'XGB':
             clf = xgboost.XGBClassifier(random_state=random_state)
         elif method == 'SVM':
