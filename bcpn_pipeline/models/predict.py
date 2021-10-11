@@ -22,7 +22,7 @@ def save_res_auc(res, tpr, fpr):
     auc_df['optimized'] = res['optimized']
     auc_df['n_lags'] = res['n_lags']
     auc_df['featureset'] = res['featureset']
-    auc_df.to_csv('results/auc_results', mode='a', index=False)
+    auc_df.to_csv('results/auc_results.csv', mode='a', index=False)
     pd.DataFrame([res]).to_csv('results/pred_results.csv', mode='a', index=False)
 
 def get_mean_auc(tprs, aucs, mean_fpr):
@@ -72,7 +72,7 @@ def calc_shap(X_train, X_test, model, method):
 
 
 def gather_shap(X, method, shap_values, test_indices):
-    print('Gathering SHAP stats...')
+    print('Gathering SHAP stats.')
 
     # https://lucasramos-34338.medium.com/visualizing-variable-importance-using-shap-and-cross-validation-bd5075e9063a
 
@@ -146,7 +146,9 @@ def optimize_params(X, y, groups, method, random_state):
     return tune_search.best_estimator_
 
 
-def train_test(X, y, groups_col, fs_name, method, n_lags, random_state, nominal_idx, optimize, importance):
+def train_test(X, y, groups_col, fs_name, method, clf, n_lags, 
+               random_state, nominal_idx, optimize, importance,
+               common_fields):
 
     ''' Set up cross validation and AUC metrics
         Need to be splitting at the subject level
@@ -157,21 +159,9 @@ def train_test(X, y, groups_col, fs_name, method, n_lags, random_state, nominal_
     tprs = [] # Array of true positive rates
     aucs = []# Array of AUC scores
     mean_fpr = np.linspace(0, 1, 100)
-        
-    # Get a baseline classifier. May not be used if we are optimizing instead.
-    clf = None
-    if not optimize:
-        if method == 'LogisticR':
-            clf = LogisticRegression(random_state=random_state, solver='liblinear')
-        elif method == 'RF':
-            clf = RandomForestClassifier(max_depth=1, random_state=random_state)
-        elif method == 'XGB':
-            clf = xgboost.XGBClassifier(random_state=random_state)
-        elif method == 'SVM':
-            clf = SVC(probability=True, random_state=random_state)
 
     # Begin train/test
-    print('Training and testing with ' + method + ' model...')
+    print('For ' + method + ' model.')
     
     train_res = [] # Array of dataframes of true vs pred labels
     test_res = [] # Array of dataframes of true vs pred labels
@@ -183,7 +173,7 @@ def train_test(X, y, groups_col, fs_name, method, n_lags, random_state, nominal_
         X_test, y_test = X.loc[test_index, :], y[test_index]
 
         # Perform upsampling to handle class imbalance
-        print('Conducting upsampling with SMOTE...')
+        print('Conducting upsampling with SMOTE.')
         smote = SMOTENC(random_state=random_state, categorical_features=nominal_idx)
         cols = X_train.columns
         X_train_upsampled, y_train_upsampled = smote.fit_resample(X_train, y_train)
@@ -203,7 +193,7 @@ def train_test(X, y, groups_col, fs_name, method, n_lags, random_state, nominal_
             Thank you for your guidance, @Miriam Farber
             https://stackoverflow.com/questions/45188319/sklearn-standardscaler-can-effect-test-matrix-result
         '''
-        print('Performing MinMax scaling...')
+        print('Performing MinMax scaling.')
         scaler = MinMaxScaler(feature_range=(0, 1))
         
         X_train_scaled = scaler.fit_transform(X_train)
@@ -216,9 +206,12 @@ def train_test(X, y, groups_col, fs_name, method, n_lags, random_state, nominal_
         cols = X_test.columns
         X_test = pd.DataFrame(X_test_scaled, index=index, columns=cols)
 
+        # Replace our default classifier clf with an optimized one
         if optimize:
+            print('Getting optimized classifier, using gridsearch.')
             clf = optimize_params(X_train, y_train, upsampled_groups, method, random_state)
 
+        print('Training and testing.')
         clf.fit(X_train.values, y_train.values)
 
         # Be sure to store the training results so we can check for overfitting later
@@ -245,6 +238,7 @@ def train_test(X, y, groups_col, fs_name, method, n_lags, random_state, nominal_
         test_res.append(pd.DataFrame({'pred': y_test_pred, 'actual': y_test}))
 
         # Calculate feature importance while we're here, using SHAP
+        print('Calculating feature importance.')
         if importance:
             shap_values = calc_shap(X_train=X_train, X_test=X_test,
                                     model=clf, method=method)
@@ -273,7 +267,7 @@ def train_test(X, y, groups_col, fs_name, method, n_lags, random_state, nominal_
             pickle.dump(shap_values, fp)
 
     # Save all relevant stats
-    print('Calculating performance metrics...')
+    print('Calculating predictive performance metrics.')
 
     # Get train and test results as separate dictionaries
     train_res = pd.concat(train_res, copy=True)
@@ -283,6 +277,7 @@ def train_test(X, y, groups_col, fs_name, method, n_lags, random_state, nominal_
     test_perf_metrics = get_performance_metrics(test_res)
     
     # Calculate AUC Metrics
+    print('Calculating AUC metrics.')
     if auc_type == 'agg':
         test_auc_metrics, test_tpr, test_fpr = get_agg_auc(y_test_all, y_test_probas_all)
 
@@ -294,56 +289,99 @@ def train_test(X, y, groups_col, fs_name, method, n_lags, random_state, nominal_
           just used to ensure we aren't overfitting'''
     
     all_res = {
+        **{'train_accuracy': train_perf_metrics['accuracy']}
         **{'test_' + str(k): v for k, v in test_perf_metrics.items()},
         **{'test_' + str(k): v for k, v in test_auc_metrics.items()},
-        **{'train_accuracy': train_perf_metrics['accuracy']}
     }
 
-    return all_res, test_tpr, test_fpr
+    all_res.update(common_fields)
+    save_res_auc(all_res, test_tpr, test_fpr)
+#     return all_res
 
-def predict(fs, n_lags=None, classifiers=None, random_state=1008, optimize=True, importance=True):
+def predict(fs, n_lags=None, classifiers=None, random_state=1008, 
+            optimize=False, importance=False, additional_fields=None):
 
     # Get list of indices of nominal columns for SMOTE-NC upsampling, used in train_test
     nominal_idx = sorted([fs.df.columns.get_loc(c) for c in fs.nominal_cols])
-    print('Nominal Indices')
-    print(nominal_idx)
+#     print('Nominal Indices')
+#     print(nominal_idx)
 
     # Split into inputs and labels
     X = fs.df[[col for col in fs.df.columns if col != fs.target_col]]
     y = fs.df[fs.target_col]
 
-    # If no subset of classifiers is specified, run them all
+    # If no subset of classifiers is specified, start with all default classifiers
     if not classifiers:
-        classifiers = ['LogisticR', 'RF', 'XGB', 'SVM']
+        classifiers = {
+            'LogisticR': LogisticRegression(random_state=random_state, solver='liblinear'), 
+            'RF': RandomForestClassifier(max_depth=1, random_state=random_state), 
+            'XGB': xgboost.XGBClassifier(random_state=random_state), 
+            'SVM': SVC(probability=True, random_state=random_state)
+        }
 
     all_results = []
     common_fields = {'n_lags': n_lags, 'featureset': fs.name, 'n_features': X.shape[1],
-                    'n_samples': X.shape[0], 'target': fs.target_col }
+                    'n_samples': X.shape[0], 'target': fs.target_col}
     
-    for method in classifiers:
+    ''' Do at least one non-optimized run '''
+    opt_opts = [False] 
+    opt_opts = opt_opts + [True] if optimize else opt_opts
+    
+    if additional_fields:
+        common_fields.update(additional_fields)
 
-        # Do baseline predictions first (no hyperparameter tuning)
-        print('Starting with baseline classifier...')
-        res, tpr, fpr = train_test(X=X, y=y, groups_col=fs.id_col, fs_name=fs.name, method=method,
-                                   n_lags=n_lags, random_state=random_state, nominal_idx=nominal_idx,
-                                   optimize=False, importance=False)
+    for method, clf in classifiers.items():
+        for opt in opt_opts:
+            common_fields.update({'method': method, 'optimized': opt})
+            train_test(X=X, y=y, groups_col=fs.id_col, fs_name=fs.name, 
+                       method=method, clf=clf, n_lags=n_lags, 
+                       random_state=random_state, nominal_idx=nominal_idx,
+                       optimize=opt, importance=importance,
+                       common_fields = common_fields
+                      )
+#             all_results.append(res)
+
+#     return pd.DataFrame(all_results)
+
+def tune_lags(fs, n_reps=5, random_state=1008):
+    
+    
+    # Exclude first month (ramp-up period during which time users were getting used to the MEMS caps)
+    if fs.horizon == 'study_day':
+        exclusion_thresh = 30
+    elif fs.horizon == 'study_week':
+        exclusion_thresh = 4
+    elif fs.horizon == 'study_month':
+        exclusion_thresh = 1
+    
+    fs.df = fs.df[fs.df[fs.horizon] > exclusion_thresh]
+    
+    # Ensure we don't end up with a tiny feature set!
+    if fs.horizon == 'study_month':
+        lag_range = range(1, 5)
+    else:
+        lag_range = range(1, 17)
+    
+    for n_lags in lag_range:
+        print('For ' + str(n_lags) + ' lags.')
+
+        #Perform final encoding, scaling, etc
+        all_feats = fs.prep_for_modeling(n_lags)
         
-        res.update(common_fields)
-        res.update({'method': method, 'optimized': False})
-        
-        save_res_auc(res, tpr, fpr)
-        all_results.append(res)
+        # Ensure we got a lagged series as expected
+#         print(all_feats.df)
+#         print(all_feats.nominal_cols)
 
-        if optimize:
-            print('Getting optimized classifier...')
-            res, tpr, fpr  = train_test(X=X, y=y, groups_col=fs.id_col,  fs_name=fs.name, method=method,
-                                        n_lags=n_lags, random_state=random_state, nominal_idx=nominal_idx,
-                                        optimize=True, importance=importance)
-           
-            res.update(common_fields)
-            res.update({'method': method, 'optimized': True})
-            
-            save_res_auc(res, tpr, fpr)
-            all_results.append(res)
-
-    return pd.DataFrame(all_results)
+        # Tune the tree depth - will help us with gridsearch later on
+        for max_depth in range(1, 6):
+            print('Using tree with max_depth of ' + str(max_depth) + '.')
+            classifiers = {
+                'RF': RandomForestClassifier(max_depth=max_depth, random_state=random_state)
+            }
+            # Do repeated predictions
+            print('Running prediction ' + str(n_reps) + ' times.')
+            for i in range(0,n_reps):
+                    # Do our actual predictions
+                    predict(all_feats, n_lags, classifiers=classifiers, random_state=i, 
+                            optimize=False, importance=False, 
+                            additional_fields={'max_depth': max_depth})
