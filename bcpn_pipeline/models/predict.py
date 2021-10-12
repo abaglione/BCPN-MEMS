@@ -110,7 +110,7 @@ def optimize_params(X, y, groups, method, random_state):
     elif method == 'RF':
         param_grid = {
             'n_estimators': [50, 100, 250, 500],
-            'max_depth': [1, 2, 3, 4, 5],
+            'max_depth': [1],
             'min_samples_leaf': [1, 2, 3]
         }
         model = RandomForestClassifier(oob_score=True, random_state=random_state)
@@ -119,7 +119,7 @@ def optimize_params(X, y, groups, method, random_state):
         n_jobs = 3
         param_grid = {
             'n_estimators': [50, 100, 250, 500],
-            'max_depth': [1, 2, 3],
+            'max_depth': [1],
             'min_child_weight': [1, 3],
             'learning_rate': [0.01, 0.1, 0.3]
         }
@@ -146,14 +146,23 @@ def optimize_params(X, y, groups, method, random_state):
     return tune_search.best_estimator_
 
 
-def train_test(X, y, groups_col, fs_name, method, clf, n_lags, 
-               random_state, nominal_idx, optimize, importance,
-               common_fields):
+def train_test(fs, method, clf, n_lags, random_state, 
+               optimize, importance, common_fields):
 
     ''' Set up cross validation and AUC metrics
         Need to be splitting at the subject level
-        Thank you, Koesmahargyo et al.! '''
+        Thank you, Koesmahargyo et al.! ''' 
     
+    # Get list of indices of nominal columns for SMOTE-NC upsampling, used in train_test
+    nominal_idx = sorted([fs.df.columns.get_loc(c) for c in fs.nominal_cols])
+#     print('Nominal Indices')
+#     print(nominal_idx)
+
+    # Split into inputs and labels
+    X = fs.df[[col for col in fs.df.columns if col != fs.target_col]]
+    y = fs.df[fs.target_col]
+    
+    # Set up outer CV and AUC metric storage objects
     cv = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=random_state)
     auc_type = 'mean'
     tprs = [] # Array of true positive rates
@@ -161,14 +170,13 @@ def train_test(X, y, groups_col, fs_name, method, clf, n_lags,
     mean_fpr = np.linspace(0, 1, 100)
 
     # Begin train/test
-    print('For ' + method + ' model.')
     
     train_res = [] # Array of dataframes of true vs pred labels
     test_res = [] # Array of dataframes of true vs pred labels
     all_shap_values = list() 
     all_test_index = list()
 
-    for train_index, test_index in cv.split(X=X, y=y, groups=X[groups_col]):
+    for train_index, test_index in cv.split(X=X, y=y, groups=X[fs.id_col]):
         X_train, y_train = X.loc[train_index, :], y[train_index]
         X_test, y_test = X.loc[test_index, :], y[test_index]
 
@@ -180,11 +188,11 @@ def train_test(X, y, groups_col, fs_name, method, clf, n_lags,
         X_train = pd.DataFrame(X_train_upsampled, columns=cols, dtype=float)
         
         # Save the upsampled groups array
-        upsampled_groups = X_train[groups_col]
+        upsampled_groups = X_train[fs.id_col]
         
         # Drop this column from the Xs - IMPORTANT!
-        X_train.drop(columns=[groups_col], inplace=True)
-        X_test.drop(columns=[groups_col], inplace=True)
+        X_train.drop(columns=[fs.id_col], inplace=True)
+        X_test.drop(columns=[fs.id_col], inplace=True)
 
         # Format y
         y_train = pd.Series(y_train_upsampled)
@@ -209,7 +217,8 @@ def train_test(X, y, groups_col, fs_name, method, clf, n_lags,
         # Replace our default classifier clf with an optimized one
         if optimize:
             print('Getting optimized classifier, using gridsearch.')
-            clf = optimize_params(X_train, y_train, upsampled_groups, method, random_state)
+            clf = optimize_params(X=X_train, y=y_train, groups=upsampled_groups, 
+                                  method=method, random_state=random_state)
 
         print('Training and testing.')
         clf.fit(X_train.values, y_train.values)
@@ -251,11 +260,11 @@ def train_test(X, y, groups_col, fs_name, method, clf, n_lags,
             Otherwise, we'll have issues with alignment.'''
         
         X_test, shap_values = gather_shap(
-            X=X.drop(columns=[groups_col]), method=method, 
+            X=X.drop(columns=[fs.id_col]), method=method, 
             shap_values=all_shap_values, test_indices=all_test_index
         )
 
-        filename = fs_name + '_' + method + '_' + str(n_lags) + '_lags'
+        filename = fs.name + '_' + method + '_' + str(n_lags) + '_lags'
         if optimize:
             filename += '_optimized'
         filename += '.ob'
@@ -289,39 +298,21 @@ def train_test(X, y, groups_col, fs_name, method, clf, n_lags,
           just used to ensure we aren't overfitting'''
     
     all_res = {
-        **{'train_accuracy': train_perf_metrics['accuracy']}
+        **{'train_accuracy': train_perf_metrics['accuracy']},
         **{'test_' + str(k): v for k, v in test_perf_metrics.items()},
         **{'test_' + str(k): v for k, v in test_auc_metrics.items()},
     }
 
     all_res.update(common_fields)
+    all_res.update({'n_features': X.shape[1], 'n_samples': X.shape[0]})
     save_res_auc(all_res, test_tpr, test_fpr)
 #     return all_res
 
-def predict(fs, n_lags=None, classifiers=None, random_state=1008, 
+def predict(fs, n_lags=None, classifiers=None, n_runs=5, 
             optimize=False, importance=False, additional_fields=None):
 
-    # Get list of indices of nominal columns for SMOTE-NC upsampling, used in train_test
-    nominal_idx = sorted([fs.df.columns.get_loc(c) for c in fs.nominal_cols])
-#     print('Nominal Indices')
-#     print(nominal_idx)
-
-    # Split into inputs and labels
-    X = fs.df[[col for col in fs.df.columns if col != fs.target_col]]
-    y = fs.df[fs.target_col]
-
-    # If no subset of classifiers is specified, start with all default classifiers
-    if not classifiers:
-        classifiers = {
-            'LogisticR': LogisticRegression(random_state=random_state, solver='liblinear'), 
-            'RF': RandomForestClassifier(max_depth=1, random_state=random_state), 
-            'XGB': xgboost.XGBClassifier(random_state=random_state), 
-            'SVM': SVC(probability=True, random_state=random_state)
-        }
-
     all_results = []
-    common_fields = {'n_lags': n_lags, 'featureset': fs.name, 'n_features': X.shape[1],
-                    'n_samples': X.shape[0], 'target': fs.target_col}
+    common_fields = {'n_lags': n_lags, 'featureset': fs.name, 'target': fs.target_col}
     
     ''' Do at least one non-optimized run '''
     opt_opts = [False] 
@@ -329,22 +320,34 @@ def predict(fs, n_lags=None, classifiers=None, random_state=1008,
     
     if additional_fields:
         common_fields.update(additional_fields)
+        
+    # Do repeated runs
+    for run in range(0, n_runs):
 
-    for method, clf in classifiers.items():
-        for opt in opt_opts:
-            common_fields.update({'method': method, 'optimized': opt})
-            train_test(X=X, y=y, groups_col=fs.id_col, fs_name=fs.name, 
-                       method=method, clf=clf, n_lags=n_lags, 
-                       random_state=random_state, nominal_idx=nominal_idx,
-                       optimize=opt, importance=importance,
-                       common_fields = common_fields
-                      )
+        # If no subset of classifiers is specified, start with all default classifiers
+        if not classifiers:
+            classifiers = {
+                'LogisticR': LogisticRegression(solver='liblinear', random_state=run), 
+                'RF': RandomForestClassifier(max_depth=1, random_state=run), 
+                'XGB': xgboost.XGBClassifier(random_state=run), 
+                'SVM': SVC(probability=True, random_state=run)
+            }
+
+        for method, clf in classifiers.items():
+            
+            # Do at least a set of non-optimized runs
+            for opt in opt_opts:
+                print('Run %i of %i for %s model.' % (run + 1, n_runs, method))
+                
+                common_fields.update({'method': method, 'optimized': opt, 'run': run})
+                train_test(fs, method=method, clf=clf, n_lags=n_lags, 
+                           random_state=run, optimize=opt, importance=importance,
+                           common_fields = common_fields)
 #             all_results.append(res)
 
 #     return pd.DataFrame(all_results)
 
-def tune_lags(fs, n_reps=5, random_state=1008):
-    
+def tune_lags(fs):
     
     # Exclude first month (ramp-up period during which time users were getting used to the MEMS caps)
     if fs.horizon == 'study_day':
@@ -374,14 +377,11 @@ def tune_lags(fs, n_reps=5, random_state=1008):
 
         # Tune the tree depth - will help us with gridsearch later on
         for max_depth in range(1, 6):
-            print('Using tree with max_depth of ' + str(max_depth) + '.')
+            print('Using tree with max_depth of %i.' % (max_depth))
             classifiers = {
-                'RF': RandomForestClassifier(max_depth=max_depth, random_state=random_state)
+                'RF': RandomForestClassifier(max_depth=max_depth, random_state=max_depth)
             }
-            # Do repeated predictions
-            print('Running prediction ' + str(n_reps) + ' times.')
-            for i in range(0,n_reps):
-                    # Do our actual predictions
-                    predict(all_feats, n_lags, classifiers=classifiers, random_state=i, 
-                            optimize=False, importance=False, 
-                            additional_fields={'max_depth': max_depth})
+            
+            predict(all_feats, n_lags, classifiers=classifiers,
+                    optimize=False, importance=False, n_runs=5,
+                    additional_fields={'max_depth': max_depth})
