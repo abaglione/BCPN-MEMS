@@ -3,6 +3,12 @@ SECONDS_IN_HOUR = 3600.0
 DAYS_IN_WEEK = 7.0
 DAYS_IN_MONTH = 30.0 # This is, of course, an avg estimate and is not precise
 
+# Times of day of MEMS use
+TIME_OF_DAY_PROPS ={
+    'bins': [-1, 6, 12, 18, 24],
+    'labels': ['early_morning', 'morning', 'afternoon', 'evening']
+}
+
 # Standard time horizons over which we want to predict
 TARGET_HORIZONS = ['study_day', 'study_week', 'study_month']
 

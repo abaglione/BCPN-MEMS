@@ -70,7 +70,7 @@ def mean_days_between_dates(x):
     else:
         return np.NaN
 
-def get_temporal_feats(df, start_date_col, pid_col, time_of_day_bins=None, time_of_day_labels=None):
+def get_temporal_feats(df, start_date_col, id_col, time_of_day_props):
     '''
         Extracts common temporal features of interest (day, week, month, time of day, etc)
         
@@ -79,27 +79,25 @@ def get_temporal_feats(df, start_date_col, pid_col, time_of_day_bins=None, time_
             
             start_date_col: Name of column that stores a participant's study start date
             
-            pid_col: Name of column that stores a participants's unique identifier (pid)
+            id_col: Name of column that stores a participants's unique identifier (pid)
             
             time_of_day_bins (optional): User-specified list of integers [-1...n], where n < 24, and each two consecutive integers form a lower and upper bound of time (in hours). Datetimes are compared against the list, and datetimes whose `hour`s fall within one of these lower and upper bound sets are considered to be in the same "time of day".
                 
                 Example: An array [-1, 5, 23] creates two time divisions, where `datetime`s with hour between 0 (12am) and 5 (5am) are in one "time of day" bin, and `datetime`s with hour between 5 (5:01am) and 23 (11:59pm) are in another "time of day" bin.
                                         
-            time_of_day_labels (optional): User-specified labels for each time division created in the time_of_day_bins list
+            time_of_day_props (optional):
     
     '''
     df['hour'] = df['datetime'].dt.hour
 
-    if time_of_day_bins:
-        df['time_of_day'] = pd.cut(df['datetime'].dt.hour, time_of_day_bins, labels=time_of_day_labels)
+    if time_of_day_props:
+        df['time_of_day'] = pd.cut(df['datetime'].dt.hour, time_of_day_props['bins'], labels=time_of_day_props['labels'])
     
     df['is_weekday'] = df['datetime'].apply(
         lambda x: 1 if x.day_name() != "Saturday" and x.day_name() != "Sunday" else 0
     )
-    
-    # Custom adjustment to ensure days start at 0                                       
-    df['study_day'] = (df['date'] - df[start_date_col]).dt.days - 1
-    
+                                      
+    df['study_day'] = (df['date'] - df[start_date_col]).dt.days
     df['study_week'] = np.floor((df['date']- df[start_date_col]).dt.days / 7.0)
     
     # Rough estimate of month
