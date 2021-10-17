@@ -66,7 +66,7 @@ def calc_shap(X_train, X_test, model, method):
         shap_values = shap.TreeExplainer(model).shap_values(X_test)
     elif method == 'SVM':
         X_train_summary = shap.kmeans(X_train, 10)
-        shap_values = shap.KernelExplainer(model.predict_proba, X_train).shap_values(X_test)
+        shap_values = shap.KernelExplainer(model.predict_proba, X_train_summary).shap_values(X_test)
 
     return shap_values
 
@@ -126,7 +126,7 @@ def optimize_params(X, y, groups, method, random_state):
         model = xgboost.XGBClassifier(random_state=random_state)
 
     elif method == 'SVM':
-        n_jobs = 1
+        n_jobs = None
         param_grid = {
             'C': [1, 10, 100],
             'gamma': [1, 0.1, 0.01, 0.001],
@@ -321,22 +321,23 @@ def predict(fs, n_lags=None, classifiers=None, n_runs=5,
     if additional_fields:
         common_fields.update(additional_fields)
         
-    # Do repeated runs
-    for run in range(0, n_runs):
+    # Do at least a set of non-optimized runs
+    for opt in opt_opts:
 
-        # If no subset of classifiers is specified, start with all default classifiers
-        if not classifiers:
-            classifiers = {
-                'LogisticR': LogisticRegression(solver='liblinear', random_state=run), 
-                'RF': RandomForestClassifier(max_depth=1, random_state=run), 
-                'XGB': xgboost.XGBClassifier(random_state=run), 
-                'SVM': SVC(probability=True, random_state=run)
-            }
+        # Do repeated runs
+        for run in range(0, n_runs):
 
-        for method, clf in classifiers.items():
+            # If no subset of classifiers is specified, start with all default classifiers
+            if not classifiers:
+                classifiers = {
+                    'LogisticR': LogisticRegression(solver='liblinear', random_state=run), 
+                    'RF': RandomForestClassifier(max_depth=1, random_state=run), 
+                    #'XGB': xgboost.XGBClassifier(random_state=run), 
+                    'SVM': SVC(probability=True, random_state=run)
+                }
+
+            for method, clf in classifiers.items():
             
-            # Do at least a set of non-optimized runs
-            for opt in opt_opts:
                 print('Run %i of %i for %s model.' % (run + 1, n_runs, method))
                 
                 common_fields.update({'method': method, 'optimized': opt, 'run': run})
