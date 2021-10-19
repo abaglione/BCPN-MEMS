@@ -57,7 +57,7 @@ def get_performance_metrics(df, actual='actual', pred='pred'):
 
     return stats
 
-def calc_shap(X_train, X_test, model, method):
+def calc_shap(X_train, X_test, model, method, random_state):
     shap_values = None
     
     if method == 'LogisticR':
@@ -65,8 +65,8 @@ def calc_shap(X_train, X_test, model, method):
     elif method == 'RF' or method == 'XGB':
         shap_values = shap.TreeExplainer(model).shap_values(X_test)
     elif method == 'SVM':
-        X_train_summary = shap.kmeans(X_train, 10)
-        shap_values = shap.KernelExplainer(model.predict_proba, X_train_summary).shap_values(X_test)
+        X_train_sampled = shap.sample(X_train, 5)
+        shap_values = shap.KernelExplainer(model.predict_proba, X_train_sampled).shap_values(X_test)
 
     return shap_values
 
@@ -83,10 +83,12 @@ def gather_shap(X, method, shap_values, test_indices):
     for i in range(1, len(test_indices)):
         all_test_indices = np.concatenate((all_test_indices, test_indices[i]), axis=0)
         
-        if method == 'RF': # Random forest has multiple outputs
+        if method == 'RF' or method == 'SVM': # classifiers with multiple outputs
             all_shap_values = np.concatenate(
                 (all_shap_values, np.array(shap_values[i])), axis=1)
         else:
+            print(all_shap_values)
+            print(shap_values[i])
             all_shap_values = np.concatenate((all_shap_values, shap_values[i]), axis=0)
 
     # Bring back variable names
@@ -250,7 +252,7 @@ def train_test(fs, method, clf, n_lags, random_state,
         print('Calculating feature importance.')
         if importance:
             shap_values = calc_shap(X_train=X_train, X_test=X_test,
-                                    model=clf, method=method)
+                                    model=clf, method=method, random_state=random_state)
             all_shap_values.append(shap_values)
             all_test_index.append(test_index)
 
@@ -314,39 +316,29 @@ def predict(fs, n_lags=None, classifiers=None, n_runs=5,
     all_results = []
     common_fields = {'n_lags': n_lags, 'featureset': fs.name, 'target': fs.target_col}
     
-    ''' Do at least one non-optimized run '''
-    opt_opts = [False] 
-    opt_opts = opt_opts + [True] if optimize else opt_opts
-    
     if additional_fields:
         common_fields.update(additional_fields)
+
+    # Do repeated runs
+    for run in range(0, n_runs):
+
+        # If no subset of classifiers is specified, start with all default classifiers
+        if not classifiers:
+            classifiers = {
+                'LogisticR': LogisticRegression(solver='liblinear', random_state=run), 
+                'RF': RandomForestClassifier(max_depth=1, random_state=run), 
+                #'XGB': xgboost.XGBClassifier(random_state=run), 
+                'SVM': SVC(probability=True, random_state=run)
+            }
+
+        for method, clf in classifiers.items():
+    
+            print('Run %i of %i for %s model.' % (run + 1, n_runs, method))
         
-    # Do at least a set of non-optimized runs
-    for opt in opt_opts:
-
-        # Do repeated runs
-        for run in range(0, n_runs):
-
-            # If no subset of classifiers is specified, start with all default classifiers
-            if not classifiers:
-                classifiers = {
-                    'LogisticR': LogisticRegression(solver='liblinear', random_state=run), 
-                    'RF': RandomForestClassifier(max_depth=1, random_state=run), 
-                    #'XGB': xgboost.XGBClassifier(random_state=run), 
-                    'SVM': SVC(probability=True, random_state=run)
-                }
-
-            for method, clf in classifiers.items():
-            
-                print('Run %i of %i for %s model.' % (run + 1, n_runs, method))
-                
-                common_fields.update({'method': method, 'optimized': opt, 'run': run})
-                train_test(fs, method=method, clf=clf, n_lags=n_lags, 
-                           random_state=run, optimize=opt, importance=importance,
-                           common_fields = common_fields)
-#             all_results.append(res)
-
-#     return pd.DataFrame(all_results)
+            common_fields.update({'method': method, 'optimized': opt, 'run': run})
+            train_test(fs, method=method, clf=clf, n_lags=n_lags, 
+                       random_state=run, optimize=optimize, importance=importance,
+                       common_fields = common_fields)
 
 def tune_lags(fs):
     
