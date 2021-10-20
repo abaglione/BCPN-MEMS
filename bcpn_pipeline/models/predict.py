@@ -87,8 +87,6 @@ def gather_shap(X, method, shap_values, test_indices):
             all_shap_values = np.concatenate(
                 (all_shap_values, np.array(shap_values[i])), axis=1)
         else:
-            print(all_shap_values)
-            print(shap_values[i])
             all_shap_values = np.concatenate((all_shap_values, shap_values[i]), axis=0)
 
     # Bring back variable names
@@ -335,7 +333,7 @@ def predict(fs, n_lags=None, classifiers=None, n_runs=5,
     
             print('Run %i of %i for %s model.' % (run + 1, n_runs, method))
         
-            common_fields.update({'method': method, 'optimized': opt, 'run': run})
+            common_fields.update({'method': method, 'optimized': optimize, 'run': run})
             train_test(fs, method=method, clf=clf, n_lags=n_lags, 
                        random_state=run, optimize=optimize, importance=importance,
                        common_fields = common_fields)
