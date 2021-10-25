@@ -145,7 +145,7 @@ def optimize_params(X, y, groups, method, random_state):
     tune_search.fit(X.values, y.values, groups)
     return tune_search.best_estimator_
 
-def predict(fs, n_lags=None, methods=None, n_runs=5, 
+def predict(fs, n_lags=None, models=None, n_runs=5, 
             optimize=False, importance=False, additional_fields=None):
 
     common_fields = {'n_lags': n_lags, 'featureset': fs.name, 'optimized': optimize,
@@ -154,11 +154,16 @@ def predict(fs, n_lags=None, methods=None, n_runs=5,
     if additional_fields:
         common_fields.update(additional_fields)
     
-    # If no subset of classifiers is specified, start with all default classifiers
-    if not methods:
-        methods = ['LogisticR', 'RF', 'SVM']
+    # If no custom models are given, run all defaults. Start building a dictionary.
+    if not models:
+        models = {
+            'LogisticR': None, 
+            'RF': None, 
+            'SVM': None
+        }
 
-    for method in methods:
+    for method, clf in models.items():
+        print(clf)
         tprs_all = [] # Array of true positive rates
         aucs_all = []# Array of AUC scores
         mean_fpr = np.linspace(0, 1, 100)
@@ -174,13 +179,14 @@ def predict(fs, n_lags=None, methods=None, n_runs=5,
             random_state = run
             common_fields.update({'method': method, 'run': run})
 
-            # Get the correct classifier
-            if method == 'LogisticR':
-                clf = LogisticRegression(solver='liblinear', random_state=random_state)
-            elif method == 'RF':
-                clf = RandomForestClassifier(max_depth=1, random_state=random_state)
-            elif method == 'SVM':
-                clf = SVC(probability=True, random_state=random_state)
+            # Get the correct classifier if it doesn't exist
+            if clf is None:
+                if method == 'LogisticR':
+                    clf = LogisticRegression(solver='liblinear', random_state=random_state)
+                elif method == 'RF':
+                    clf = RandomForestClassifier(max_depth=1, random_state=random_state)
+                elif method == 'SVM':
+                    clf = SVC(probability=True, random_state=random_state)
 
             # Do training and testing
             print('Run %i of %i for %s model.' % (run + 1, n_runs, method))
@@ -352,9 +358,10 @@ def tune_lags(fs):
         # Tune the tree depth - will help us with gridsearch later on
         for max_depth in range(1, 6):
             print('Using tree with max_depth of %i.' % (max_depth))
-            classifiers = {
+            models = {
                 'RF': RandomForestClassifier(max_depth=max_depth, random_state=max_depth)
             }
             
-            predict(all_feats, n_lags, optimize=False, importance=False, n_runs=5,
+            predict(all_feats, n_lags, models=models, 
+                    optimize=False, importance=False, n_runs=5, 
                     additional_fields={'max_depth': max_depth})
