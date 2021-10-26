@@ -16,22 +16,13 @@ from sklearn.pipeline import Pipeline
 from tune_sklearn import TuneGridSearchCV
 import matplotlib.pyplot as plt
 
-def save_res_auc(res, tpr, fpr):
-    auc_df = pd.DataFrame({'test_tpr': tpr, 'test_fpr': fpr})
-    auc_df['method'] = res['method']
-    auc_df['optimized'] = res['optimized']
-    auc_df['n_lags'] = res['n_lags']
-    auc_df['featureset'] = res['featureset']
-    auc_df.to_csv('results/auc_results.csv', mode='a', index=False)
-    pd.DataFrame([res]).to_csv('results/pred_results.csv', mode='a', index=False)
-
-def get_mean_auc(tprs, aucs, mean_fpr):
+def get_mean_roc_auc(tprs, aucs, mean_fpr):
     mean_tpr = np.mean(tprs, axis=0)
     mean_tpr[-1] = 1.0
     mean_auc = auc(mean_fpr, mean_tpr)
     std_auc = np.std(aucs)
 
-    return {'mean_auc': mean_auc, 'std_auc': std_auc}, mean_tpr, mean_fpr
+    return {'mean_tpr': mean_tpr, 'mean_fpr': mean_fpr}, {'mean_auc': mean_auc, 'std_auc': std_auc} 
 
 def get_agg_auc(y_all, y_probas_all):
 
@@ -168,16 +159,16 @@ def predict(fs, n_lags=None, models=None, n_runs=5,
         aucs_all = []# Array of AUC scores
         mean_fpr = np.linspace(0, 1, 100)
 
-        train_res_all = [] # Array of dataframes of true vs pred labels
-        test_res_all = [] # Array of dataframes of true vs pred labels
-
         shap_values_all = list() 
         test_indices_all = list()
 
         # Do repeated runs
         for run in range(0, n_runs):
+            
+            train_res_all = [] # Array of dataframes of true vs pred labels
+            test_res_all = [] # Array of dataframes of true vs pred labels
+            
             random_state = run
-            common_fields.update({'method': method, 'run': run})
 
             # Get the correct classifier if it doesn't exist
             if clf is None:
@@ -270,15 +261,37 @@ def predict(fs, n_lags=None, models=None, n_runs=5,
 
                 # Calculate feature importance while we're here, using SHAP
                 if importance:
-                    print('Calculating feature importance.')
+                    print('Calculating feature importance for this fold.')
                     shap_values = calc_shap(X_train=X_train, X_test=X_test,
                                             model=clf, method=method, random_state=random_state)
                     shap_values_all.append(shap_values)
                     test_indices_all.append(test_index)
+                
+            # Save all relevant stats
+            print('Calculating predictive performance for this run.')
 
+            # Get train and test results as separate dictionaries
+            train_res = pd.concat(train_res_all, copy=True)
+            test_res = pd.concat(test_res_all, copy=True)
+
+            train_perf_metrics = get_performance_metrics(train_res)
+            test_perf_metrics = get_performance_metrics(test_res)
+
+            all_res = {
+                **{'train_accuracy': train_perf_metrics['accuracy']},
+                **{'test_' + str(k): v for k, v in test_perf_metrics.items()}
+            }
+
+            all_res.update(common_fields)            
+            all_res.update({'method': method, 'run': run,
+                            'n_features': X.shape[1], 'n_samples': X.shape[0]})
+            
+            # Results are saved for each run
+            pd.DataFrame([all_res]).to_csv('results/pred_results.csv', mode='a', index=False)
+ 
         # Get and save all the shap values
         if importance:
-            print('Gathering feature importance across all runs.')
+            print('Gathering feature importance across all runs and folds.')
 
             ''' Don't forget to drop the groups col and unselected feats.
                 Otherwise, we'll have issues with alignment.'''
@@ -297,36 +310,17 @@ def predict(fs, n_lags=None, models=None, n_runs=5,
 
             with open('feature_importance/shap_' + filename, 'wb') as fp:
                 pickle.dump(shap_values, fp)
-
-        # Save all relevant stats
-        print('Calculating predictive performance metrics across all runs.')
-
-        # Get train and test results as separate dictionaries
-        train_res_all = pd.concat(train_res_all, copy=True)
-        test_res_all = pd.concat(test_res_all, copy=True)
-
-        train_perf_metrics = get_performance_metrics(train_res_all)
-        test_perf_metrics = get_performance_metrics(test_res_all)
         
-        # Calculate AUC Metrics
-        print('Calculating AUC metrics across all runs.')
-        test_auc_metrics, test_tpr, test_fpr = get_mean_auc(tprs_all, aucs_all, mean_fpr)
+        # Calculate and save AUC Metrics
+        print('Getting mean ROC curve and AUC mean/std across all runs and folds.')
+        test_roc_res, test_auc_res = get_mean_roc_auc(tprs_all, aucs_all, mean_fpr)
         
-        ''' Create a combined results and auc dictionary
-            Add only the accuracy from the training results
-            just used to ensure we aren't overfitting'''
+        test_roc_res.update(common_fields)
+        pd.DataFrame([test_roc_res]).to_csv('results/roc_curves.csv', mode='a', index=False)
         
-        all_res = {
-            **{'train_accuracy': train_perf_metrics['accuracy']},
-            **{'test_' + str(k): v for k, v in test_perf_metrics.items()},
-            **{'test_' + str(k): v for k, v in test_auc_metrics.items()},
-        }
-
-        all_res.update(common_fields)
-        all_res.update({'n_features': X.shape[1], 'n_samples': X.shape[0]}) # OK to just take most recent X - won't change across runs
-        save_res_auc(all_res, test_tpr, test_fpr)
-        #     return all_res
-
+        test_auc_res.update(common_fields)
+        pd.DataFrame([test_auc_res]).to_csv('results/auc_results.csv', mode='a', index=False)
+        
 def tune_lags(fs):
     
     # Exclude first month (ramp-up period during which time users were getting used to the MEMS caps)
