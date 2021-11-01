@@ -154,7 +154,6 @@ def predict(fs, n_lags=None, models=None, n_runs=5,
         }
 
     for method, clf in models.items():
-        print(clf)
         tprs_all = [] # Array of true positive rates
         aucs_all = []# Array of AUC scores
         mean_fpr = np.linspace(0, 1, 100)
@@ -282,10 +281,10 @@ def predict(fs, n_lags=None, models=None, n_runs=5,
                 **{'test_' + str(k): v for k, v in test_perf_metrics.items()}
             }
 
+            common_fields.update({'method': method, 'run': run,
+                                  'n_features': X.shape[1], 'n_samples': X.shape[0]})
             all_res.update(common_fields)            
-            all_res.update({'method': method, 'run': run,
-                            'n_features': X.shape[1], 'n_samples': X.shape[0]})
-            
+  
             # Results are saved for each run
             pd.DataFrame([all_res]).to_csv('results/pred_results.csv', mode='a', index=False)
  
@@ -314,6 +313,8 @@ def predict(fs, n_lags=None, models=None, n_runs=5,
         # Calculate and save AUC Metrics
         print('Getting mean ROC curve and AUC mean/std across all runs and folds.')
         test_roc_res, test_auc_res = get_mean_roc_auc(tprs_all, aucs_all, mean_fpr)
+        
+        common_fields.update({'run': -1}) # Indicates these are aggregated results
         
         test_roc_res.update(common_fields)
         pd.DataFrame([test_roc_res]).to_csv('results/roc_curves.csv', mode='a', index=False)
