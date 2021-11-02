@@ -317,7 +317,7 @@ def predict(fs, n_lags=None, models=None, n_runs=5,
         common_fields.update({'run': -1}) # Indicates these are aggregated results
         
         test_roc_res.update(common_fields)
-        pd.DataFrame([test_roc_res]).to_csv('results/roc_curves.csv', mode='a', index=False)
+        pd.DataFrame().from_dict(test_roc_res).to_csv('results/roc_curves.csv', mode='a', index=False)
         
         test_auc_res.update(common_fields)
         pd.DataFrame([test_auc_res]).to_csv('results/auc_results.csv', mode='a', index=False)
