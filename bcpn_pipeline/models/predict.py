@@ -16,13 +16,13 @@ from sklearn.pipeline import Pipeline
 from tune_sklearn import TuneGridSearchCV
 import matplotlib.pyplot as plt
 
-def get_mean_roc_auc(tprs, aucs, mean_fpr):
-    mean_tpr = np.mean(tprs, axis=0)
-    mean_tpr[-1] = 1.0
-    mean_auc = auc(mean_fpr, mean_tpr)
-    std_auc = np.std(aucs)
+def get_mean_roc_auc(tprs, aucs, fpr_mean):
+    tpr_mean = np.mean(tprs, axis=0)
+    tpr_mean[-1] = 1.0
+    auc_mean = auc(fpr_mean, tpr_mean)
+    auc_std = np.std(aucs)
 
-    return {'mean_tpr': mean_tpr, 'mean_fpr': mean_fpr}, {'mean_auc': mean_auc, 'std_auc': std_auc} 
+    return {'tpr_mean': tpr_mean, 'fpr_mean': fpr_mean}, {'auc_mean': auc_mean, 'auc_std': auc_std} 
 
 def get_agg_auc(y_all, y_probas_all):
 
@@ -156,7 +156,7 @@ def predict(fs, n_lags=None, models=None, n_runs=5,
     for method, clf in models.items():
         tprs_all = [] # Array of true positive rates
         aucs_all = []# Array of AUC scores
-        mean_fpr = np.linspace(0, 1, 100)
+        fpr_mean = np.linspace(0, 1, 100)
 
         shap_values_all = list() 
         test_indices_all = list()
@@ -249,7 +249,7 @@ def predict(fs, n_lags=None, models=None, n_runs=5,
                 # Store TPR and AUC
                 # Thank you sklearn documentation https://scikit-learn.org/stable/auto_examples/model_selection/plot_roc_crossval.html
                 fpr, tpr, thresholds = roc_curve(y_test, y_test_probas)
-                tprs_all.append(interp(mean_fpr, fpr, tpr))
+                tprs_all.append(interp(fpr_mean, fpr, tpr))
                 tprs_all[-1][0] = 0.0
                 roc_auc = auc(fpr, tpr)
                 aucs_all.append(roc_auc)
@@ -312,7 +312,7 @@ def predict(fs, n_lags=None, models=None, n_runs=5,
         
         # Calculate and save AUC Metrics
         print('Getting mean ROC curve and AUC mean/std across all runs and folds.')
-        test_roc_res, test_auc_res = get_mean_roc_auc(tprs_all, aucs_all, mean_fpr)
+        test_roc_res, test_auc_res = get_mean_roc_auc(tprs_all, aucs_all, fpr_mean)
         
         common_fields.update({'run': -1}) # Indicates these are aggregated results
         
