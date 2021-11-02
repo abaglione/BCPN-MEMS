@@ -134,7 +134,7 @@ def optimize_params(X, y, groups, method, random_state):
                                    verbose=2)
 
     tune_search.fit(X.values, y.values, groups)
-    return tune_search.best_estimator_
+    return tune_search
 
 def predict(fs, n_lags=None, models=None, n_runs=5, 
             optimize=False, importance=False, additional_fields=None):
@@ -232,15 +232,15 @@ def predict(fs, n_lags=None, models=None, n_runs=5,
                 cols = X_test.columns
                 X_test = pd.DataFrame(X_test_scaled, index=index, columns=cols)
 
+                print('Training and testing.')
                 # Replace our default classifier clf with an optimized one
                 if optimize:
                     print('Getting optimized classifier using gridsearch.')
                     clf = optimize_params(X=X_train, y=y_train, groups=upsampled_groups, 
                                           method=method, random_state=random_state)
-
-                print('Training and testing.')
-                clf.fit(X_train.values, y_train.values)
-
+                else:
+                    clf.fit(X_train.values, y_train.values)
+    
                 # Be sure to store the training results so we can check for overfitting later
                 y_train_pred = clf.predict(X_train.values)
                 y_test_pred = clf.predict(X_test.values)
