@@ -16,6 +16,8 @@ from sklearn.pipeline import Pipeline
 from tune_sklearn import TuneGridSearchCV
 import matplotlib.pyplot as plt
 
+import transform
+
 def get_mean_roc_auc(tprs, aucs, fpr_mean):
     tpr_mean = np.mean(tprs, axis=0)
     tpr_mean[-1] = 1.0
@@ -48,7 +50,7 @@ def get_performance_metrics(df, actual='actual', pred='pred'):
 
     return stats
 
-def calc_shap(X_train, X_test, model, method, random_state):
+def calc_shap(X_train, X_test, model, method):
     shap_values = None
     
     if method == 'LogisticR':
@@ -180,13 +182,15 @@ def predict(fs, n_lags=None, models=None, n_runs=5,
 
             # Do training and testing
             print('Run %i of %i for %s model.' % (run + 1, n_runs, method))
-        
-            # Get list of indices of nominal columns for SMOTE-NC upsampling, used in train_test
-            nominal_idx = sorted([fs.df.columns.get_loc(c) for c in fs.nominal_cols])
 
             # Split into inputs and labels
             X = fs.df[[col for col in fs.df.columns if col != fs.target_col]]
             y = fs.df[fs.target_col]
+
+            # Get list of indices of nominal columns for SMOTE-NC upsampling, used in train_test
+            # Safeguard to ensure we're getting the right indices
+            nominal_cols = [col for col in X.columns if col in fs.nominal_cols]
+            nominal_idx = sorted([X.columns.get_loc(c) for c in nominal_cols])
             
             # Set up outer CV
             ''' Need to be splitting at the subject level
@@ -197,6 +201,19 @@ def predict(fs, n_lags=None, models=None, n_runs=5,
             for train_index, test_index in cv.split(X=X, y=y, groups=X[fs.id_col]):
                 X_train, y_train = X.loc[train_index, :], y[train_index]
                 X_test, y_test = X.loc[test_index, :], y[test_index]
+
+                print('Imputing missing data.')
+                # Create combined dataframes for imputation only
+                df_train = pd.concat(X_train, y_train, axis=1)
+                df_test = pd.concat(X_test, y_test, axis=1)
+
+                # Do imputation                
+                df_train = transform.impute(df_train, fs.id_col)
+                df_test = transform.impute(df_test, fs.id_col)
+    
+                # Split back into X and y
+                X_train, y_train = df_train[df_train.columns[:-1]], df_train[df_train.columns[-1]]
+                X_test, y_test = df_train[df_test.columns[:-1]], df_train[df_test.columns[-1]]
 
                 # Perform upsampling to handle class imbalance
                 print('Conducting upsampling with SMOTE.')
@@ -214,6 +231,7 @@ def predict(fs, n_lags=None, models=None, n_runs=5,
 
                 # Format y
                 y_train = pd.Series(y_train_upsampled)
+                y_test = pd.Series(y_test)
                 
                 ''' Perform Scaling
                     Thank you for your guidance, @Miriam Farber
@@ -299,7 +317,7 @@ def predict(fs, n_lags=None, models=None, n_runs=5,
                 shap_values=shap_values_all, test_indices=test_indices_all
             )
 
-            filename = fs.name + '_' + method + '_' + str(n_lags) + '_lags'
+            filename = '%s_%s_%d_lags'.format(fs.name, method, n_lags)
             if optimize:
                 filename += '_optimized'
             filename += '.ob'

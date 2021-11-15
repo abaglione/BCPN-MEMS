@@ -1,8 +1,5 @@
 import numpy as np
 import pandas as pd
-from sklearn.preprocessing import MinMaxScaler
-from sklearn.experimental import enable_iterative_imputer
-from sklearn.impute import IterativeImputer
 from itertools import compress
 
 class Featureset:
@@ -19,18 +16,8 @@ class Featureset:
         if nominal_cols:
             self.nominal_cols += nominal_cols
         
-    def transform(self):
-        print('Doing imputation, and one-hot encoding...')
-        
-        # Impute numerics and categoricals
-        categoricals = self.df.select_dtypes('category')
-        for col in categoricals.columns:
-            self.df[col].fillna(self.df[col].mode()[0], inplace=True)
-        
-        imputer = IterativeImputer(random_state=5)
-        numerics = list(set(list(self.df.select_dtypes('number').columns)) -\
-                        set([self.id_col]))
-        self.df[numerics] = imputer.fit_transform(self.df[numerics])
+    def one_hot_encode(self):
+        print('Doing one-hot encoding...')
 
         '''One-hot encode categoricals
            We'll want to add any new columns to our list of nominal columsn - use python magic to make it happen
@@ -105,16 +92,16 @@ class Featureset:
     
     def prep_for_modeling(self, n_lags=None):
         
-        # Transform current featureset
-        self.transform()
-        
-        fs = self
+        self.one_hot_encode()
         
         # If this is a temporal fs
         if n_lags:
         
             # Get new, lagged featureset
-            fs = fs.get_lagged_featureset(n_lags)
+            fs = self.get_lagged_featureset(n_lags)
+        
+        else:
+            fs = self
         
         # Eliminate collinear features
         fs.handle_multicollinearity()
@@ -122,11 +109,9 @@ class Featureset:
         # Ensure target column is last
         end_col = self.df.pop(self.target_col)
         self.df[self.target_col] = end_col
-
         
         return fs
 
-            
     def __repr__(self):    
         rep = '\n'.join([
             f'Name: { self.name }',
