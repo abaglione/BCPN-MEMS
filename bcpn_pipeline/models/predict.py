@@ -16,7 +16,7 @@ from sklearn.pipeline import Pipeline
 from tune_sklearn import TuneGridSearchCV
 import matplotlib.pyplot as plt
 
-import transform
+from . import transform
 
 def get_mean_roc_auc(tprs, aucs, fpr_mean):
     tpr_mean = np.mean(tprs, axis=0)
@@ -202,10 +202,9 @@ def predict(fs, n_lags=None, models=None, n_runs=5,
                 X_train, y_train = X.loc[train_index, :], y[train_index]
                 X_test, y_test = X.loc[test_index, :], y[test_index]
 
-                print('Imputing missing data.')
                 # Create combined dataframes for imputation only
-                df_train = pd.concat(X_train, y_train, axis=1)
-                df_test = pd.concat(X_test, y_test, axis=1)
+                df_train = pd.concat([X_train, y_train], axis=1)
+                df_test = pd.concat([X_test, y_test], axis=1)
 
                 # Do imputation                
                 df_train = transform.impute(df_train, fs.id_col)
