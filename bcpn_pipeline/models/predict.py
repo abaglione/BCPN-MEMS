@@ -134,7 +134,7 @@ def optimize_params(X, y, groups, method, random_state):
                                    verbose=2)
 
     tune_search.fit(X.values, y.values, groups)
-    return tune_search
+    return tune_search.best_estimator_
 
 def predict(fs, n_lags=None, models=None, n_runs=5, 
             optimize=False, importance=False, additional_fields=None):
