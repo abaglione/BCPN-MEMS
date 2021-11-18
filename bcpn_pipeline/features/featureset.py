@@ -1,20 +1,30 @@
 import numpy as np
 import pandas as pd
 from itertools import compress
+from ..models.predict import predict
 
 class Featureset:
-    def __init__(self, df, name, id_col, nominal_cols=None, target_col=None, horizon=None):
+    def __init__(self, df, name, id_col, nominal_cols=None, target_col=None, horizon=None, n_lags=None):
         self.df = df
         self.name = name
         self.id_col = id_col
         self.target_col = target_col
         self.horizon = horizon
+        self.n_lags = n_lags
         
         '''Used to store list of non-continuous columns (e.g., yes/no columns or
         ones that have been one-hot encoded) '''
         self.nominal_cols = [self.id_col]
         if nominal_cols:
             self.nominal_cols += nominal_cols
+        
+    def prune_nominals(self):
+        nominal_cols = [col for col in self.nominal_cols if 
+                        col in self.df.columns
+                        and col != self.id_col
+                        and col != self.target_col]
+
+        self.nominal_cols = nominal_cols
         
     def one_hot_encode(self):
         print('Doing one-hot encoding...')
@@ -30,6 +40,8 @@ class Featureset:
         # Exclude datetimes /non-numerics
         self.df = self.df.select_dtypes('number') # Assumes target col is numeric
         
+        self.prune_nominals()
+
         # Final sanity check to ensure imputation / transformations worked - none should be null!
         assert self.df.isnull().values.any() == False, "Imputation failed! Investigate your dataframe."
         
@@ -66,10 +78,10 @@ class Featureset:
         # Finally, get a new list of nominal feats that mirrors the lagged structure
         mask = [any(col_og in col for col_og in self.nominal_cols) for col in res.columns]
         nominal_cols = list(compress(list(res.columns), mask))
-        nominal_cols = [col for col in nominal_cols if col != self.id_col
-                        and col != self.target_col]
+        self.prune_nominals()
 
-        return Featureset(df=res, name=self.name, nominal_cols=nominal_cols, id_col=self.id_col, target_col=self.target_col)
+        return Featureset(df=res, name=self.name, nominal_cols=nominal_cols, 
+                          id_col=self.id_col, target_col=self.target_col, n_lags=n_lags)
     
     def handle_multicollinearity(self):
         print('Handling multicollinearity...')
@@ -87,10 +99,24 @@ class Featureset:
         if len(to_drop) > 0:
             self.df.drop(columns=to_drop, axis=1, inplace=True)
 
-        nom_to_drop = [col for col in to_drop if col in self.nominal_cols]
-        self.nominal_cols = list(set(self.nominal_cols) - set(nom_to_drop))
-    
-    def prep_for_modeling(self, n_lags=None):
+        self.prune_nominals()
+
+    def select_feats(self, top_n_feats = 10):
+        # Use default random forest (shallow with max_depth=1) set in predict() function
+        models = {
+            'RF': None 
+        }
+
+        # Get the shap values and select the top N features by SHAP
+        X_test, shap_values = predict(self, models=models,
+                                      optimize=False, importance=True)
+        
+        feats_selected = list(X_test.columns[np.argsort(np.abs(shap_values).mean(0))])[0:top_n_feats]
+
+        self.df = self.df[feats_selected]
+        self.prune_nominals()
+
+    def prep_for_modeling(self, n_lags=None, top_n_feats=None):
         
         self.one_hot_encode()
         
@@ -103,9 +129,12 @@ class Featureset:
         else:
             fs = self
         
-        # Eliminate collinear features
-        fs.handle_multicollinearity()
-                   
+        # Do feature selection
+        self.select_feats(top_n_feats)
+
+        # Should have already been done - this is just a safeguard
+        self.prune_nominals()
+
         # Ensure target column is last
         end_col = self.df.pop(self.target_col)
         self.df[self.target_col] = end_col
@@ -120,7 +149,10 @@ class Featureset:
         ])
         
         if self.horizon:
-            rep = rep + f'\nhorizon: { self.horizon }'
+            rep = rep + f'\nHorizon: { self.horizon }'
+        
+        if self.n_lags:
+            rep = rep + f'\nNumber of lags: { self.n_lags }'
         
         if self.target_col:
             rep = rep + f'\nTarget: { self.target_col }'
