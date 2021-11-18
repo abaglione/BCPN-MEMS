@@ -22,6 +22,7 @@ from . import metrics
 # Thank you to Lee Cai, who bootstrapped a similar function in a diff project
 # Modifications have been made to suit this project.
 def optimize_params(X, y, groups, method, random_state):
+    print('Getting optimized classifier using gridsearch.')
     n_jobs = -1
     if method == 'LogisticR':
         param_grid = {
@@ -70,7 +71,7 @@ def optimize_params(X, y, groups, method, random_state):
     tune_search.fit(X.values, y.values, groups)
     return tune_search.best_estimator_
 
-def train_test(X, y, id_col, random_state, nominal_idx, 
+def train_test(X, y, id_col, clf, random_state, nominal_idx, 
                method, optimize, importance, fpr_mean):
     tprs = [] # Array of true positive rates
     aucs = []# Array of AUC scores
@@ -91,13 +92,11 @@ def train_test(X, y, id_col, random_state, nominal_idx,
         X_train, y_train = X.loc[train_index, :], y[train_index]
         X_test, y_test = X.loc[test_index, :], y[test_index]
 
-        print('Doing imputation.')
         imputer = IterativeImputer(random_state=5)
-        X_train, y_train = transform.impute(X_train, y_train, id_col, imputer)
-        X_test, y_test  = transform.impute(X_test, y_test, id_col, imputer)
+        X_train = transform.impute(X_train, id_col, imputer)
+        X_test = transform.impute(X_test, id_col, imputer)
 
         # Perform upsampling to handle class imbalance
-        print('Conducting upsampling with SMOTE.')
         smote = SMOTENC(random_state=random_state, categorical_features=nominal_idx)
         X_train, y_train, upsampled_groups = transform.upsample(X, y, id_col, smote)
         
@@ -113,19 +112,18 @@ def train_test(X, y, id_col, random_state, nominal_idx,
             Thank you for your guidance, @Miriam Farber
             https://stackoverflow.com/questions/45188319/sklearn-standardscaler-can-effect-test-matrix-result
         '''
-        print('Performing MinMax scaling.')
         scaler = MinMaxScaler(feature_range=(0, 1))
         X_train = transform.scale(X_train, scaler)
         X_test = transform.scale(X_test, scaler)
 
-        print('Training and testing.')
         # Replace our default classifier clf with an optimized one
         if optimize:
-            print('Getting optimized classifier using gridsearch.')
             clf = optimize_params(X=X_train, y=y_train, groups=upsampled_groups, 
                                     method=method, random_state=random_state)
         else:
             clf.fit(X_train.values, y_train.values)
+    
+        print('Training and testing.')
 
         # Be sure to store the training results so we can check for overfitting later
         y_train_pred = clf.predict(X_train.values)
@@ -146,9 +144,8 @@ def train_test(X, y, id_col, random_state, nominal_idx,
 
         # Calculate feature importance while we're here, using SHAP
         if importance:
-            print('Calculating feature importance for this fold.')
             shap_values = metrics.calc_shap(X_train=X_train, X_test=X_test,
-                                            model=clf, method=method, random_state=random_state)
+                                            model=clf, method=method)
             shap_values.append(shap_values)
             test_indices.append(test_index)
     
@@ -210,15 +207,15 @@ def predict(fs, n_lags=None, models=None, n_runs=5,
             nominal_idx = sorted([X.columns.get_loc(c) for c in nominal_cols])
             
             # Do training and testing
-            res = train_test(X, y, fs.id_col, random_state, nominal_idx, 
-                             method, optimize, importance)
+            res = train_test(X, y, fs.id_col, clf, random_state, nominal_idx, 
+                             method, optimize, importance, fpr_mean)
                 
             # Save all relevant stats
             print('Calculating predictive performance for this run.')
 
             # Get train and test results as separate dictionaries
-            train_perf_metrics = metrics.get_performance_metrics(res['train_res'])
-            test_perf_metrics = metrics.get_performance_metrics(res['test_res'])
+            train_perf_metrics = metrics.calc_performance_metrics(res['train_res'])
+            test_perf_metrics = metrics.calc_performance_metrics(res['test_res'])
 
             all_res = {
                 **{'train_accuracy': train_perf_metrics['accuracy']},
@@ -231,6 +228,7 @@ def predict(fs, n_lags=None, models=None, n_runs=5,
             all_res.update(common_fields)            
   
             # Results are saved for each run
+            print('Saving performance metrics for this run.')
             pd.DataFrame([all_res]).to_csv('results/pred_results.csv', mode='a', index=False)
 
             shap_values.append(res['shap_values'])
@@ -240,7 +238,6 @@ def predict(fs, n_lags=None, models=None, n_runs=5,
  
         # Get and save all the shap values
         if importance:
-            print('Gathering feature importance across all runs and folds.')
 
             ''' Don't forget to drop the groups col and unselected feats.
                 Otherwise, we'll have issues with alignment.'''
@@ -260,7 +257,6 @@ def predict(fs, n_lags=None, models=None, n_runs=5,
                 pickle.dump(shap_values, fp)
         
         # Calculate and save AUC Metrics
-        print('Getting mean ROC curve and AUC mean/std across all runs and folds.')
         test_roc_res, test_auc_res = metrics.get_mean_roc_auc(tprs, aucs, fpr_mean)
         
         common_fields.update({'run': -1}) # Indicates these are aggregated results

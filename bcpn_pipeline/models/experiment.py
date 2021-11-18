@@ -1,4 +1,3 @@
-from .select import select_feats
 from .predict import predict
 from sklearn.ensemble import RandomForestClassifier
 

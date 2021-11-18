@@ -4,6 +4,7 @@ from sklearn.metrics import accuracy_score, precision_recall_fscore_support, mea
 import shap
 
 def get_mean_roc_auc(tprs, aucs, fpr_mean):
+    print('Getting mean ROC AUC stats.')
     tpr_mean = np.mean(tprs, axis=0)
     tpr_mean[-1] = 1.0
     auc_mean = auc(fpr_mean, tpr_mean)
@@ -12,7 +13,7 @@ def get_mean_roc_auc(tprs, aucs, fpr_mean):
     return {'tpr_mean': tpr_mean, 'fpr_mean': fpr_mean}, {'auc_mean': auc_mean, 'auc_std': auc_std} 
 
 def get_agg_auc(y_all, y_probas_all):
-
+    print('Getting aggregate ROC AUC stats.')
     y_all = np.concatenate(y_all)
     y_probas_all = np.concatenate(y_probas_all)
     
@@ -20,7 +21,8 @@ def get_agg_auc(y_all, y_probas_all):
     fpr, tpr, thresholds = roc_curve(y_all, y_probas_all)
     return {'auc': auc(fpr, tpr)}, tpr, fpr
     
-def get_performance_metrics(df, actual='actual', pred='pred'):
+def calc_performance_metrics(df, actual='actual', pred='pred'):
+    print('Calculating standard performance metrics.')
     stats = {}
 
     stats['accuracy'] = accuracy_score(y_true=df[actual], y_pred=df[pred])
@@ -36,6 +38,7 @@ def get_performance_metrics(df, actual='actual', pred='pred'):
     return stats
 
 def calc_shap(X_train, X_test, model, method):
+    print('Calculating feature importance for this fold.')
     shap_values = None
     
     if method == 'LogisticR':

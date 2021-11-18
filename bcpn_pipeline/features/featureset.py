@@ -19,6 +19,7 @@ class Featureset:
             self.nominal_cols += nominal_cols
         
     def prune_nominals(self):
+        print('Pruning the nominal columns.')
         nominal_cols = [col for col in self.nominal_cols if 
                         col in self.df.columns
                         and col != self.id_col
@@ -27,7 +28,7 @@ class Featureset:
         self.nominal_cols = nominal_cols
         
     def one_hot_encode(self):
-        print('Doing one-hot encoding...')
+        print('Doing one-hot encoding.')
 
         '''One-hot encode categoricals
            We'll want to add any new columns to our list of nominal columsn - use python magic to make it happen
@@ -46,7 +47,7 @@ class Featureset:
         assert self.df.isnull().values.any() == False, "Imputation failed! Investigate your dataframe."
         
     def get_lagged_featureset(self, n_lags):
-        print('Getting lagged features...')
+        print('Getting lagged features.')
         '''Generate lagged observations for temporal data, for each subject '''
         rows = []
 
@@ -102,11 +103,14 @@ class Featureset:
         self.prune_nominals()
 
     def select_feats(self, top_n_feats = 10):
+        print('Selecting features.')
         # Use default random forest (shallow with max_depth=1) set in predict() function
         models = {
             'RF': None 
         }
-
+        print('Feats before: ')
+        print(list(self.df.columns))
+        print(self.df)
         # Get the shap values and select the top N features by SHAP
         X_test, shap_values = predict(self, models=models,
                                       optimize=False, importance=True)
@@ -115,9 +119,12 @@ class Featureset:
 
         self.df = self.df[feats_selected]
         self.prune_nominals()
+        
+        print('Feats after: ')
+        print(list(self.df.columns))
 
     def prep_for_modeling(self, n_lags=None, top_n_feats=None):
-        
+        print('Preparing feature set for modeling.')
         self.one_hot_encode()
         
         # If this is a temporal fs
@@ -125,20 +132,18 @@ class Featureset:
         
             # Get new, lagged featureset
             fs = self.get_lagged_featureset(n_lags)
-        
         else:
             fs = self
         
         # Do feature selection
-        self.select_feats(top_n_feats)
+        fs.select_feats(top_n_feats)
 
         # Should have already been done - this is just a safeguard
-        self.prune_nominals()
+        fs.prune_nominals()
 
         # Ensure target column is last
-        end_col = self.df.pop(self.target_col)
-        self.df[self.target_col] = end_col
-        
+        end_col = fs.df.pop(fs.target_col)
+        fs.df[fs.target_col] = end_col
         return fs
 
     def __repr__(self):    
