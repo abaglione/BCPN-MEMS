@@ -36,15 +36,15 @@ def tune_lags(fs):
                 'RF': RandomForestClassifier(max_depth=max_depth, random_state=max_depth)
             }
             
-            predict(all_feats, n_lags, models=models, 
-                    optimize=False, importance=False, n_runs=5, 
-                    additional_fields={'max_depth': max_depth})
+            predict(fs=all_feats, n_lags=n_lags, models=models, 
+                    select_feats=False, tune_hyperparams=False, 
+                    importance=False, additional_fields={'max_depth': max_depth})
 
 def predict_from_mems(fs, n_lags):
 
     # Get a set of lagged features that's ready to go!
     fs_lagged = fs.prep_for_modeling(n_lags)
 
-    # Do a non-optimized and an optimized run, for comparison's sake
-    predict(fs_lagged, optimize=False, importance=False) 
-    predict(fs_lagged, optimize=True, importance=True)
+    # Do a non-tune_hyperparamsd and an tune_hyperparamsd run, for comparison's sake
+    predict(fs_lagged, select_feats=False, tune_hyperparams=False, importance=False) 
+    predict(fs_lagged, select_feats=True, tune_hyperparams=True, importance=True)

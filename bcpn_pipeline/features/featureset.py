@@ -102,28 +102,7 @@ class Featureset:
 
         self.prune_nominals()
 
-    def select_feats(self, top_n_feats = 10):
-        print('Selecting features.')
-        # Use default random forest (shallow with max_depth=1) set in predict() function
-        models = {
-            'RF': None 
-        }
-        print('Feats before: ')
-        print(list(self.df.columns))
-        print(self.df)
-        # Get the shap values and select the top N features by SHAP
-        X_test, shap_values = predict(self, models=models,
-                                      optimize=False, importance=True)
-        
-        feats_selected = list(X_test.columns[np.argsort(np.abs(shap_values).mean(0))])[0:top_n_feats]
-
-        self.df = self.df[feats_selected]
-        self.prune_nominals()
-        
-        print('Feats after: ')
-        print(list(self.df.columns))
-
-    def prep_for_modeling(self, n_lags=None, top_n_feats=None):
+    def prep_for_modeling(self, n_lags=None):
         print('Preparing feature set for modeling.')
         self.one_hot_encode()
         
@@ -134,9 +113,6 @@ class Featureset:
             fs = self.get_lagged_featureset(n_lags)
         else:
             fs = self
-        
-        # Do feature selection
-        fs.select_feats(top_n_feats)
 
         # Should have already been done - this is just a safeguard
         fs.prune_nominals()

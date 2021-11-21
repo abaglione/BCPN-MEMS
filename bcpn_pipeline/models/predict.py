@@ -8,7 +8,8 @@ from scipy import interp
 from sklearn.experimental import enable_iterative_imputer
 from sklearn.impute import IterativeImputer
 from sklearn.preprocessing import MinMaxScaler
-from sklearn.model_selection import GridSearchCV, StratifiedGroupKFold, LeaveOneGroupOut
+from sklearn.feature_selection import SelectFromModel
+from sklearn.model_selection import GridSearchCV, StratifiedGroupKFold
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import SVC
@@ -21,8 +22,8 @@ from . import metrics
 
 # Thank you to Lee Cai, who bootstrapped a similar function in a diff project
 # Modifications have been made to suit this project.
-def optimize_params(X, y, groups, method, random_state):
-    print('Getting optimized classifier using gridsearch.')
+def tune_hyperparams_params(X, y, groups, method, random_state):
+    print('Getting tune_hyperparamsd classifier using gridsearch.')
     n_jobs = -1
     if method == 'LogisticR':
         param_grid = {
@@ -72,7 +73,7 @@ def optimize_params(X, y, groups, method, random_state):
     return tune_search.best_estimator_
 
 def train_test(X, y, id_col, clf, random_state, nominal_idx, 
-               method, optimize, importance, fpr_mean):
+               method, select_feats, tune_hyperparams, importance, fpr_mean):
     tprs = [] # Array of true positive rates
     aucs = []# Array of AUC scores
 
@@ -107,19 +108,28 @@ def train_test(X, y, id_col, clf, random_state, nominal_idx,
         # Format y
         y_train = pd.Series(y_train)
         y_test = pd.Series(y_test)
-        
-        ''' Perform Scaling
-            Thank you for your guidance, @Miriam Farber
-            https://stackoverflow.com/questions/45188319/sklearn-standardscaler-can-effect-test-matrix-result
-        '''
-        scaler = MinMaxScaler(feature_range=(0, 1))
-        X_train = transform.scale(X_train, scaler)
-        X_test = transform.scale(X_test, scaler)
 
-        # Replace our default classifier clf with an optimized one
-        if optimize:
-            clf = optimize_params(X=X_train, y=y_train, groups=upsampled_groups, 
-                                    method=method, random_state=random_state)
+        if select_feats:
+            '''Thank you @davide-nd: 
+              https://stackoverflow.com/questions/59292631/how-to-combine-gridsearchcv-and-selectfrommodel-to-reduce-the-number-of-features '''
+            selector = SelectFromModel(estimator=RandomForestClassifier(max_depth=1, random_state=random_state))
+            X_train = X_train.iloc[:,selector.get_support()]
+            X_test = X_test.iloc[:,selector.get_support()]
+
+        if method == 'LogisticR':
+            
+            ''' Perform Scaling
+                Thank you @miriam-farber
+                https://stackoverflow.com/questions/45188319/sklearn-standardscaler-can-effect-test-matrix-result
+            '''
+            scaler = MinMaxScaler(feature_range=(0, 1))
+            X_train = transform.scale(X_train, scaler)
+            X_test = transform.scale(X_test, scaler)
+
+        # Replace our default classifier clf with an tune_hyperparamsd one
+        if tune_hyperparams:
+            clf = tune_hyperparams_params(X=X_train, y=y_train, groups=upsampled_groups, 
+                                  method=method, random_state=random_state)
         else:
             clf.fit(X_train.values, y_train.values)
     
@@ -144,9 +154,9 @@ def train_test(X, y, id_col, clf, random_state, nominal_idx,
 
         # Calculate feature importance while we're here, using SHAP
         if importance:
-            shap_values = metrics.calc_shap(X_train=X_train, X_test=X_test,
+            shap_values_fold = metrics.calc_shap(X_train=X_train, X_test=X_test,
                                             model=clf, method=method)
-            shap_values.append(shap_values)
+            shap_values.append(shap_values_fold)
             test_indices.append(test_index)
     
     train_res = pd.concat(train_res, copy=True)
@@ -156,11 +166,11 @@ def train_test(X, y, id_col, clf, random_state, nominal_idx,
             'shap_values': shap_values, 'test_indices': test_indices, 
             'train_res': train_res, 'test_res': test_res}
 
-def predict(fs, n_lags=None, models=None, n_runs=5, 
-            optimize=False, importance=False, additional_fields=None):
+def predict(fs, n_lags=None, models=None, n_runs=2, select_feats=False,
+            tune_hyperparams=False, importance=False, additional_fields=None):
 
-    common_fields = {'n_lags': n_lags, 'featureset': fs.name, 'optimized': optimize,
-                     'target': fs.target_col}
+    common_fields = {'n_lags': n_lags, 'featureset': fs.name, 'features_selected': select_feats, 
+                     'tuned': tune_hyperparams, 'target': fs.target_col}
     
     if additional_fields:
         common_fields.update(additional_fields)
@@ -207,8 +217,9 @@ def predict(fs, n_lags=None, models=None, n_runs=5,
             nominal_idx = sorted([X.columns.get_loc(c) for c in nominal_cols])
             
             # Do training and testing
-            res = train_test(X, y, fs.id_col, clf, random_state, nominal_idx, 
-                             method, optimize, importance, fpr_mean)
+            res = train_test(X=X, y=y, id_col=fs.id_col, clf=clf, random_state=random_state, 
+                             nominal_idx=nominal_idx, method=method, select_feats=select_feats,
+                             tune_hyperparams=tune_hyperparams, importance=importance, fpr_mean=fpr_mean)
                 
             # Save all relevant stats
             print('Calculating predictive performance for this run.')
@@ -230,11 +241,13 @@ def predict(fs, n_lags=None, models=None, n_runs=5,
             # Results are saved for each run
             print('Saving performance metrics for this run.')
             pd.DataFrame([all_res]).to_csv('results/pred_results.csv', mode='a', index=False)
-
-            shap_values.append(res['shap_values'])
-            test_indices.append(res['test_indices'])
-            tprs.append(res['tprs'])
-            aucs.append(res['aucs'])
+            
+            ''' Note the need to extend vs append here, since we're pulling in values
+                from a nested fuction call '''
+            shap_values.extend(res['shap_values'])
+            test_indices.extend(res['test_indices'])
+            tprs.extend(res['tprs'])
+            aucs.extend(res['aucs'])
  
         # Get and save all the shap values
         if importance:
@@ -246,8 +259,8 @@ def predict(fs, n_lags=None, models=None, n_runs=5,
                 shap_values=shap_values, test_indices=test_indices)
 
             filename = '%s_%s_%d_lags'.format(fs.name, method, n_lags)
-            if optimize:
-                filename += '_optimized'
+            if tune_hyperparams:
+                filename += '_tune_hyperparamsd'
             filename += '.ob'
             
             with open('feature_importance/X_test_' + filename, 'wb') as fp:
