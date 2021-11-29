@@ -66,7 +66,7 @@ def tune_hyperparams_params(X, y, groups, method, random_state):
 
     cv = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=random_state)
     tune_search = TuneGridSearchCV(estimator=model, param_grid=param_grid,
-                                   cv=cv, scoring='sensitivity',  n_jobs=n_jobs,
+                                   cv=cv, scoring='recall',  n_jobs=n_jobs,
                                    verbose=2)
 
     tune_search.fit(X.values, y.values, groups)
@@ -93,14 +93,25 @@ def train_test(X, y, id_col, clf, random_state, nominal_idx,
         X_train, y_train = X.loc[train_index, :], y[train_index]
         X_test, y_test = X.loc[test_index, :], y[test_index]
 
+        # Do imputation
         imputer = IterativeImputer(random_state=5)
         X_train = transform.impute(X_train, id_col, imputer)
         X_test = transform.impute(X_test, id_col, imputer)
 
-        # Perform upsampling to handle class imbalance
-        smote = SMOTENC(random_state=random_state, categorical_features=nominal_idx)
-        X_train, y_train, upsampled_groups = transform.upsample(X, y, id_col, smote)
+        try:
+            # Perform upsampling to handle class imbalance
+            smote = SMOTENC(random_state=random_state, categorical_features=nominal_idx)
+            X_train, y_train, upsampled_groups = transform.upsample(X, y, id_col, smote)
         
+        except ValueError:       
+            # Set n_neighbors = n_samples
+            # Not great if we have a really small sample size. Hmm.
+            k_neighbors = (y_train == 1).sum() - 1
+            print('%d neighbors for SMOTE' % k_neighbors)
+            smote = SMOTENC(random_state=random_state, categorical_features=nominal_idx,
+                            k_neighbors=k_neighbors)
+            X_train, y_train, upsampled_groups = transform.upsample(X, y, id_col, smote)
+  
         # Drop the id column from the Xs - IMPORTANT!
         X_train.drop(columns=[id_col], inplace=True)
         X_test.drop(columns=[id_col], inplace=True)
@@ -113,7 +124,14 @@ def train_test(X, y, id_col, clf, random_state, nominal_idx,
             '''Thank you @davide-nd: 
               https://stackoverflow.com/questions/59292631/how-to-combine-gridsearchcv-and-selectfrommodel-to-reduce-the-number-of-features '''
             selector = SelectFromModel(estimator=RandomForestClassifier(max_depth=1, random_state=random_state))
+            selector.fit(X_train, y_train)
+            print('Columns before: ')
+            print(X_train.columns)
+           
             X_train = X_train.iloc[:,selector.get_support()]
+             
+            print('Columns after:')
+            print(X_train.columns)
             X_test = X_test.iloc[:,selector.get_support()]
 
         if method == 'LogisticR':
