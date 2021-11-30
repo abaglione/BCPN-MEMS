@@ -12,7 +12,7 @@ def impute(df, id_col, imputer):
     # Excluding id_col here is unnecessary, since it will always be present...remove sometime
     numerics = list(set(list(df.select_dtypes('number').columns)) -\
                     set([id_col]))
-    df[numerics] = imputer.fit_transform(df[numerics])
+    df[numerics] = imputer.transform(df[numerics])
     return df
 
 def upsample(X, y, id_col, upsampler):
