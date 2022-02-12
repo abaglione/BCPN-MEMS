@@ -42,9 +42,6 @@ class Featureset:
         self.df = self.df.select_dtypes('number') # Assumes target col is numeric
         
         self.prune_nominals()
-
-        # Final sanity check to ensure imputation / transformations worked - none should be null!
-        assert self.df.isnull().values.any() == False, "Imputation failed! Investigate your dataframe."
         
     def get_lagged_featureset(self, n_lags):
         print('Getting lagged features.')

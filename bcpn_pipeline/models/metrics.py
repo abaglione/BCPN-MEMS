@@ -28,12 +28,14 @@ def calc_performance_metrics(df, actual='actual', pred='pred'):
     stats['accuracy'] = accuracy_score(y_true=df[actual], y_pred=df[pred])
     
     precision, recall, f1_score, support = precision_recall_fscore_support(
-        y_true=df[actual], y_pred=df[pred], average='macro'
+        y_true=df[actual], y_pred=df[pred], pos_label=0, average='binary'
     )
     
     stats.update({'precision': precision, 'recall': recall, 
                   'f1_score': f1_score, 'support': support
                  })
+
+    print(stats)
 
     return stats
 

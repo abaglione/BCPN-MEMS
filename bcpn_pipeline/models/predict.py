@@ -13,7 +13,7 @@ from sklearn.model_selection import GridSearchCV, StratifiedGroupKFold
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import SVC
-from sklearn.metrics import roc_curve, auc
+from sklearn.metrics import roc_curve, auc, recall_score, make_scorer
 from tune_sklearn import TuneGridSearchCV
 import matplotlib.pyplot as plt
 
@@ -22,9 +22,10 @@ from . import metrics
 
 # Thank you to Lee Cai, who bootstrapped a similar function in a diff project
 # Modifications have been made to suit this project.
-def tune_hyperparams_params(X, y, groups, method, random_state):
-    print('Getting tune_hyperparamsd classifier using gridsearch.')
-    n_jobs = -1
+def tune_hyperparams(X, y, groups, method, random_state):
+    print('Getting tuned classifier using gridsearch.')
+    # n_jobs = -1
+    n_jobs = 3
     if method == 'LogisticR':
         param_grid = {
             'C': np.logspace(-4, 4, 20),
@@ -43,7 +44,7 @@ def tune_hyperparams_params(X, y, groups, method, random_state):
         model = RandomForestClassifier(oob_score=True, random_state=random_state)
 
     elif method == 'XGB':
-        n_jobs = 3
+        # n_jobs = 3
         param_grid = {
             'n_estimators': [50, 100, 250, 500],
             'max_depth': [1],
@@ -53,7 +54,7 @@ def tune_hyperparams_params(X, y, groups, method, random_state):
         model = xgboost.XGBClassifier(random_state=random_state)
 
     elif method == 'SVM':
-        n_jobs = None
+        # n_jobs = None
         param_grid = {
             'C': [1, 10, 100],
             'gamma': [1, 0.1, 0.01, 0.001],
@@ -65,6 +66,11 @@ def tune_hyperparams_params(X, y, groups, method, random_state):
     print('n_jobs = ' + str(n_jobs))
 
     cv = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=random_state)
+
+    # Create custom scorer
+    # We care more about negative labels - those who don't adhere
+    nonadherent_scorer = make_scorer(recall_score, pos_label=0)
+
     tune_search = TuneGridSearchCV(estimator=model, param_grid=param_grid,
                                    cv=cv, scoring='recall',  n_jobs=n_jobs,
                                    verbose=2)
@@ -73,7 +79,7 @@ def tune_hyperparams_params(X, y, groups, method, random_state):
     return tune_search.best_estimator_
 
 def train_test(X, y, id_col, clf, random_state, nominal_idx, 
-               method, select_feats, tune_hyperparams, importance, fpr_mean):
+               method, select_feats, tune, importance, fpr_mean):
     tprs = [] # Array of true positive rates
     aucs = []# Array of AUC scores
 
@@ -145,10 +151,10 @@ def train_test(X, y, id_col, clf, random_state, nominal_idx,
             X_train = transform.scale(X_train, scaler)
             X_test = transform.scale(X_test, scaler)
 
-        # Replace our default classifier clf with an tune_hyperparamsd one
-        if tune_hyperparams:
-            clf = tune_hyperparams_params(X=X_train, y=y_train, groups=upsampled_groups, 
-                                  method=method, random_state=random_state)
+        # Replace our default classifier clf with an tuned one
+        if tune:
+            clf = tune_hyperparams(X=X_train, y=y_train, groups=upsampled_groups, 
+                                   method=method, random_state=random_state)
         else:
             clf.fit(X_train.values, y_train.values)
     
@@ -161,7 +167,7 @@ def train_test(X, y, id_col, clf, random_state, nominal_idx,
 
         # Store TPR and AUC
         # Thank you sklearn documentation https://scikit-learn.org/stable/auto_examples/model_selection/plot_roc_crossval.html
-        fpr, tpr, thresholds = roc_curve(y_test, y_test_probas)
+        fpr, tpr, thresholds = roc_curve(y_test, y_test_probas, pos_label=0)
         tprs.append(interp(fpr_mean, fpr, tpr))
         tprs[-1][0] = 0.0
         roc_auc = auc(fpr, tpr)
@@ -185,11 +191,13 @@ def train_test(X, y, id_col, clf, random_state, nominal_idx,
             'shap_values': shap_values, 'test_indices': test_indices, 
             'train_res': train_res, 'test_res': test_res}
 
-def predict(fs, n_lags=None, models=None, n_runs=2, select_feats=False,
-            tune_hyperparams=False, importance=False, additional_fields=None):
+def predict(fs, output_path, write_header, n_lags=None, models=None, n_runs=5, select_feats=False,
+            tune=False, importance=False, additional_fields=None):
+
+    mode = 'w' if write_header else 'a' # Set up mode
 
     common_fields = {'n_lags': n_lags, 'featureset': fs.name, 'features_selected': select_feats, 
-                     'tuned': tune_hyperparams, 'target': fs.target_col}
+                     'tuned': tune, 'target': fs.target_col}
     
     if additional_fields:
         common_fields.update(additional_fields)
@@ -227,7 +235,7 @@ def predict(fs, n_lags=None, models=None, n_runs=2, select_feats=False,
             print('Run %i of %i for %s model.' % (run + 1, n_runs, method))
 
             # Split into inputs and labels
-            X = fs.df[[col for col in fs.df.columns if col != fs.target_col]]
+            X = fs.df.drop(columns=[fs.target_col])
             y = fs.df[fs.target_col]
 
             # Get list of indices of nominal columns for SMOTE-NC upsampling, used in train_test
@@ -238,7 +246,7 @@ def predict(fs, n_lags=None, models=None, n_runs=2, select_feats=False,
             # Do training and testing
             res = train_test(X=X, y=y, id_col=fs.id_col, clf=clf, random_state=random_state, 
                              nominal_idx=nominal_idx, method=method, select_feats=select_feats,
-                             tune_hyperparams=tune_hyperparams, importance=importance, fpr_mean=fpr_mean)
+                             tune=tune, importance=importance, fpr_mean=fpr_mean)
                 
             # Save all relevant stats
             print('Calculating predictive performance for this run.')
@@ -259,7 +267,7 @@ def predict(fs, n_lags=None, models=None, n_runs=2, select_feats=False,
   
             # Results are saved for each run
             print('Saving performance metrics for this run.')
-            pd.DataFrame([all_res]).to_csv('results/pred_results.csv', mode='a', index=False)
+            pd.DataFrame([all_res]).to_csv(output_path + 'pred.csv', encoding='utf-8', mode=mode, header=write_header,index=False)
             
             ''' Note the need to extend vs append here, since we're pulling in values
                 from a nested fuction call '''
@@ -278,14 +286,14 @@ def predict(fs, n_lags=None, models=None, n_runs=2, select_feats=False,
                 shap_values=shap_values, test_indices=test_indices)
 
             filename = '%s_%s_%d_lags'.format(fs.name, method, n_lags)
-            if tune_hyperparams:
-                filename += '_tune_hyperparamsd'
+            if tune:
+                filename += '_tuned'
             filename += '.ob'
             
-            with open('feature_importance/X_test_' + filename, 'wb') as fp:
+            with open(output_path + 'X_test_' + filename, 'wb') as fp:
                 pickle.dump(X_test, fp)
 
-            with open('feature_importance/shap_' + filename, 'wb') as fp:
+            with open(output_path + 'shap_' + filename, 'wb') as fp:
                 pickle.dump(shap_values, fp)
         
         # Calculate and save AUC Metrics
@@ -294,10 +302,10 @@ def predict(fs, n_lags=None, models=None, n_runs=2, select_feats=False,
         common_fields.update({'run': -1}) # Indicates these are aggregated results
         
         test_roc_res.update(common_fields)
-        pd.DataFrame().from_dict(test_roc_res).to_csv('results/roc_curves.csv', mode='a', index=False)
+        pd.DataFrame().from_dict(test_roc_res).to_csv(output_path + 'roc.csv', encoding='utf-8', mode=mode, header=write_header,index=False)
         
         test_auc_res.update(common_fields)
-        pd.DataFrame([test_auc_res]).to_csv('results/auc_results.csv', mode='a', index=False)
+        pd.DataFrame([test_auc_res]).to_csv(output_path + 'auc.csv', encoding='utf-8', mode=mode, header=write_header,index=False)
 
         # Kind of dumb, but lets us quickly use shap values to preselect features in the select_feats() function
         # Will change this later, I'm sure

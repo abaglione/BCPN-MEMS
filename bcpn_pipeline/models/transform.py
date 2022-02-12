@@ -9,10 +9,11 @@ def impute(df, id_col, imputer):
     for col in categoricals.columns:
         df[col].fillna(df[col].mode()[0], inplace=True)
 
-    # Excluding id_col here is unnecessary, since it will always be present...remove sometime
-    numerics = list(set(list(df.select_dtypes('number').columns)) -\
-                    set([id_col]))
+    numerics = list(df.select_dtypes('number').columns)
     df[numerics] = imputer.transform(df[numerics])
+    
+    # Sanity check
+    assert df.isnull().values.any() == False, "Imputation failed! Investigate your dataframe."
     return df
 
 def upsample(X, y, id_col, upsampler):

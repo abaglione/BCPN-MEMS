@@ -1,8 +1,12 @@
+from ..consts import OUTPUT_PATH_PRIMARY
 from .predict import predict
 from sklearn.ensemble import RandomForestClassifier
 
 def tune_lags(fs):
     
+    output_path = OUTPUT_PATH_PRIMARY + '/tuned_lags/'
+    write_header = True # Write header the first time
+
     # Exclude first month (ramp-up period during which time users were getting used to the MEMS caps)
     if fs.horizon == 'study_day':
         exclusion_thresh = 30
@@ -19,6 +23,7 @@ def tune_lags(fs):
     else:
         lag_range = range(1, 17)
     
+    
     for n_lags in lag_range:
         print('For ' + str(n_lags) + ' lags.')
 
@@ -29,22 +34,26 @@ def tune_lags(fs):
 #         print(all_feats.df)
 #         print(all_feats.nominal_cols)
 
-        # Tune the tree depth - will help us with gridsearch later on
+        # Also tune the tree depth - will help us with gridsearch later on
         for max_depth in range(1, 6):
             print('Using tree with max_depth of %i.' % (max_depth))
             models = {
                 'RF': RandomForestClassifier(max_depth=max_depth, random_state=max_depth)
             }
-            
-            predict(fs=all_feats, n_lags=n_lags, models=models, 
-                    select_feats=False, tune_hyperparams=False, 
+
+            predict(fs=all_feats, output_path=output_path, write_header=write_header,
+                    n_lags=n_lags, models=models, select_feats=False, tune=False, 
                     importance=False, additional_fields={'max_depth': max_depth})
 
+            write_header = False # Don't write the header in subsequent runs
+
 def predict_from_mems(fs, n_lags):
+
+    output_path = OUTPUT_PATH_PRIMARY + '/prediction_task/'
 
     # Get a set of lagged features that's ready to go!
     fs_lagged = fs.prep_for_modeling(n_lags)
 
-    # Do a non-tune_hyperparamsd and an tune_hyperparamsd run, for comparison's sake
-    predict(fs_lagged, select_feats=False, tune_hyperparams=False, importance=False) 
-    predict(fs_lagged, select_feats=True, tune_hyperparams=True, importance=True)
+    # Do a non-tuned and an tuned run, for comparison's sake
+    predict(fs_lagged, output_path=output_path, write_header = True, select_feats=False, tune=False, importance=False) 
+    predict(fs_lagged, output_path=output_path, write_header = False, select_feats=True, tune=True, importance=True)

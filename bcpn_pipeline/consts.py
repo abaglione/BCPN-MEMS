@@ -1,3 +1,5 @@
+OUTPUT_PATH_PRIMARY = 'results/'
+
 # Standard time-based constants
 SECONDS_IN_HOUR = 3600.0
 DAYS_IN_WEEK = 7.0
