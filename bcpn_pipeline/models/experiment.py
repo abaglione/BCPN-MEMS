@@ -2,11 +2,10 @@ from ..consts import OUTPUT_PATH_PRIMARY
 from .predict import predict
 from sklearn.ensemble import RandomForestClassifier
 
-def tune_lags(fs):
+def tune_lags(fs, write_header):
     
     output_path = OUTPUT_PATH_PRIMARY + '/tuned_lags/'
-    write_header = True # Write header the first time
-
+    
     # Exclude first month (ramp-up period during which time users were getting used to the MEMS caps)
     if fs.horizon == 'study_day':
         exclusion_thresh = 30
@@ -56,4 +55,5 @@ def predict_from_mems(fs, n_lags):
 
     # Do a non-tuned and an tuned run, for comparison's sake
     predict(fs_lagged, output_path=output_path, write_header = True, select_feats=False, tune=False, importance=False) 
+    
     predict(fs_lagged, output_path=output_path, write_header = False, select_feats=True, tune=True, importance=True)

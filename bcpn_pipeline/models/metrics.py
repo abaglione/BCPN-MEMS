@@ -51,6 +51,7 @@ def calc_shap(X_train, X_test, model, method):
         X_train_sampled = shap.sample(X_train, 5)
         shap_values = shap.KernelExplainer(model.predict_proba, X_train_sampled).shap_values(X_test)
 
+    print(shap_values)
     return shap_values
 
 

@@ -455,12 +455,6 @@ for horizon in consts.TARGET_HORIZONS:
     temporal_featuresets
 
 
-# In[14]:
-
-
-# Sanity check
-temporal_featuresets[0].df
-
 
 # # Prediction
 
@@ -503,20 +497,13 @@ for t_feats in temporal_featuresets:
 # ## Study 1: Predict Adherence from MEMS Data Only
 
 # ### Tune number of lags
-
-# In[23]:
-
-
-fs = temporal_featuresets[2]
-fs.df['adherent'].value_counts()
-
-
 # In[27]:
-
 
 ''' Test the model performance for a range of lags (number of previous inputs)
       and range of max_depths (since training with RF by default)
     max_depth exploration will help ensure we aren't overfitting.
 '''
+write_header = True # Write header the first time
 for t_feats in temporal_featuresets:
-    models.tune_lags(t_feats)
+    models.tune_lags(t_feats, write_header)
+    write_header = False

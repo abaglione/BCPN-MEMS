@@ -25,7 +25,7 @@ from . import metrics
 def tune_hyperparams(X, y, groups, method, random_state):
     print('Getting tuned classifier using gridsearch.')
     # n_jobs = -1
-    n_jobs = 3
+    n_jobs = 1
     if method == 'LogisticR':
         param_grid = {
             'C': np.logspace(-4, 4, 20),
@@ -38,20 +38,10 @@ def tune_hyperparams(X, y, groups, method, random_state):
     elif method == 'RF':
         param_grid = {
             'n_estimators': [50, 100, 250, 500],
-            'max_depth': [1],
+            'max_depth': [1, 2, 3],
             'min_samples_leaf': [1, 2, 3]
         }
         model = RandomForestClassifier(oob_score=True, random_state=random_state)
-
-    elif method == 'XGB':
-        # n_jobs = 3
-        param_grid = {
-            'n_estimators': [50, 100, 250, 500],
-            'max_depth': [1],
-            'min_child_weight': [1, 3],
-            'learning_rate': [0.01, 0.1, 0.3]
-        }
-        model = xgboost.XGBClassifier(random_state=random_state)
 
     elif method == 'SVM':
         # n_jobs = None
@@ -202,8 +192,16 @@ def predict(fs, output_path, write_header, n_lags=None, models=None, n_runs=5, s
     if additional_fields:
         common_fields.update(additional_fields)
     
+    ''' Hacky - added just for predict_from_mems. 
+    Would need to remove if re-tuning lags!
+    Need to change pipeline later to accomodate passing in max_depth'''
+    if n_lags == 2: # Study day and study week
+        max_depth = 1
+    else: # Study month
+        max_depth = 5 
+    
     # If no custom models are given, run all defaults. Start building a dictionary.
-    if not models:
+    if not models: # hmm, did we remove xgboost?
         models = {
             'LogisticR': None, 
             'RF': None, 
@@ -218,6 +216,8 @@ def predict(fs, output_path, write_header, n_lags=None, models=None, n_runs=5, s
         shap_values = list() 
         test_indices = list()
 
+        all_res = []
+
         # Do repeated runs
         for run in range(0, n_runs):
             random_state = run
@@ -227,7 +227,7 @@ def predict(fs, output_path, write_header, n_lags=None, models=None, n_runs=5, s
                 if method == 'LogisticR':
                     clf = LogisticRegression(solver='liblinear', random_state=random_state)
                 elif method == 'RF':
-                    clf = RandomForestClassifier(max_depth=1, random_state=random_state)
+                    clf = RandomForestClassifier(max_depth=max_depth, random_state=random_state)
                 elif method == 'SVM':
                     clf = SVC(probability=True, random_state=random_state)
 
@@ -255,22 +255,18 @@ def predict(fs, output_path, write_header, n_lags=None, models=None, n_runs=5, s
             train_perf_metrics = metrics.calc_performance_metrics(res['train_res'])
             test_perf_metrics = metrics.calc_performance_metrics(res['test_res'])
 
-            all_res = {
-                **{'train_accuracy': train_perf_metrics['accuracy']},
-                **{'test_' + str(k): v for k, v in test_perf_metrics.items()}
-            }
-
+            train_perf_metrics.update({'type': 'train'})
+            test_perf_metrics.update({'type': 'test'})
+            
             common_fields.update({'method': method, 'run': run,
                                   'n_features': X.shape[1], 'n_samples': X.shape[0]})
             
-            all_res.update(common_fields)            
-  
-            # Results are saved for each run
-            print('Saving performance metrics for this run.')
-            pd.DataFrame([all_res]).to_csv(output_path + 'pred.csv', encoding='utf-8', mode=mode, header=write_header,index=False)
+            for d in [train_perf_metrics, test_perf_metrics]:
+                d.update(common_fields)
+                all_res.append(pd.DataFrame([d]))
             
             ''' Note the need to extend vs append here, since we're pulling in values
-                from a nested fuction call '''
+                from a nested function call '''
             shap_values.extend(res['shap_values'])
             test_indices.extend(res['test_indices'])
             tprs.extend(res['tprs'])
@@ -281,6 +277,8 @@ def predict(fs, output_path, write_header, n_lags=None, models=None, n_runs=5, s
 
             ''' Don't forget to drop the groups col and unselected feats.
                 Otherwise, we'll have issues with alignment.'''
+            # TODO - diff features may be selected for each run. Figure out how to handle.
+            
             X_test, shap_values = metrics.gather_shap(
                 X=X.drop(columns=[fs.id_col]), method=method, 
                 shap_values=shap_values, test_indices=test_indices)
@@ -295,6 +293,12 @@ def predict(fs, output_path, write_header, n_lags=None, models=None, n_runs=5, s
 
             with open(output_path + 'shap_' + filename, 'wb') as fp:
                 pickle.dump(shap_values, fp)
+        
+        print('Saving performance metrics...')
+        
+        # Save individual run results
+        all_res = pd.concat(all_res)
+        all_res.to_csv(output_path + 'pred.csv', encoding='utf-8', mode=mode, header=write_header,index=False)
         
         # Calculate and save AUC Metrics
         test_roc_res, test_auc_res = metrics.get_mean_roc_auc(tprs, aucs, fpr_mean)
