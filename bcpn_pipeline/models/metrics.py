@@ -35,45 +35,33 @@ def calc_performance_metrics(df, actual='actual', pred='pred'):
                   'f1_score': f1_score, 'support': support
                  })
 
-    print(stats)
-
     return stats
 
-def calc_shap(X_train, X_test, model, method):
-    print('Calculating feature importance for this fold.')
+def calc_shap(X_train, X_test, model, method, pos_label):
+    print('Calculating SHAP values.')
     shap_values = None
     
     if method == 'LogisticR':
         shap_values = shap.LinearExplainer(model, X_train).shap_values(X_test)
-    elif method == 'RF' or method == 'XGB':
-        shap_values = shap.TreeExplainer(model).shap_values(X_test)
+    elif method == 'RF':
+        shap_values = shap.TreeExplainer(model).shap_values(X_test)[pos_label] # i.e., 0 or 1
     elif method == 'SVM':
         X_train_sampled = shap.sample(X_train, 5)
         shap_values = shap.KernelExplainer(model.predict_proba, X_train_sampled).shap_values(X_test)
 
-    print(shap_values)
     return shap_values
 
 
-def gather_shap(X, method, shap_values, test_indices):
-    print('Gathering SHAP stats.')
-
-    # https://lucasramos-34338.medium.com/visualizing-variable-importance-using-shap-and-cross-validation-bd5075e9063a
+def gather_shap(shap_values, feats):
+    print('Gathering SHAP values.')
 
     # Combine results from all iterations
-    test_indices_all = test_indices[0]
-    shap_values_all = np.array(shap_values[0])
+    dfs = []
 
-    for i in range(1, len(test_indices)):
-        test_indices_all = np.concatenate((test_indices_all, test_indices[i]), axis=0)
-        
-        if method == 'RF' or method == 'SVM': # classifiers with multiple outputs
-            shap_values_all = np.concatenate(
-                (shap_values_all, np.array(shap_values[i])), axis=1)
-        else:
-            shap_values_all = np.concatenate((shap_values_all, shap_values[i]), axis=0)
-
-    # Bring back variable names
-    X_test = pd.DataFrame(X.iloc[test_indices_all], columns=X.columns)
-
-    return X_test, shap_values_all
+    for i in range(1, len(feats)):
+        df = pd.DataFrame(shap_values[i], columns=feats[i])
+        dfs.append(df)
+ 
+    # Get the intersection of features selected in each fold and each run
+    df_final = pd.concat(dfs, join='inner', axis=0)
+    return df_final

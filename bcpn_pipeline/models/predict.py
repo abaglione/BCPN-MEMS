@@ -3,7 +3,6 @@ import pandas as pd
 from imblearn.over_sampling import SMOTENC
 import shap
 import pickle
-import xgboost
 from scipy import interp
 from sklearn.experimental import enable_iterative_imputer
 from sklearn.impute import IterativeImputer
@@ -15,14 +14,13 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import SVC
 from sklearn.metrics import roc_curve, auc, recall_score, make_scorer
 from tune_sklearn import TuneGridSearchCV
-import matplotlib.pyplot as plt
 
 from . import transform
 from . import metrics
 
 # Thank you to Lee Cai, who bootstrapped a similar function in a diff project
 # Modifications have been made to suit this project.
-def tune_hyperparams(X, y, groups, method, random_state):
+def tune_hyperparams(X, y, groups, method, random_state, pos_label):
     print('Getting tuned classifier using gridsearch.')
     # n_jobs = -1
     n_jobs = 1
@@ -58,23 +56,22 @@ def tune_hyperparams(X, y, groups, method, random_state):
     cv = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=random_state)
 
     # Create custom scorer
-    # We care more about negative labels - those who don't adhere
-    nonadherent_scorer = make_scorer(recall_score, pos_label=0)
+    nonadherent_scorer = make_scorer(recall_score, pos_label=pos_label)
 
     tune_search = TuneGridSearchCV(estimator=model, param_grid=param_grid,
-                                   cv=cv, scoring='recall',  n_jobs=n_jobs,
+                                   cv=cv, scoring=nonadherent_scorer,  n_jobs=n_jobs,
                                    verbose=2)
 
     tune_search.fit(X.values, y.values, groups)
     return tune_search.best_estimator_
 
 def train_test(X, y, id_col, clf, random_state, nominal_idx, 
-               method, select_feats, tune, importance, fpr_mean):
+               method, select_feats, tune, importance, fpr_mean, pos_label=0): # We care more about negative labels - those who don't adhere. Pos label is 0, for us!
     tprs = [] # Array of true positive rates
     aucs = []# Array of AUC scores
 
     shap_values = list() 
-    test_indices = list()
+    feats = list()
 
     train_res = [] # Array of dataframes of true vs pred labels
     test_res = [] # Array of dataframes of true vs pred labels
@@ -122,13 +119,8 @@ def train_test(X, y, id_col, clf, random_state, nominal_idx,
               https://stackoverflow.com/questions/59292631/how-to-combine-gridsearchcv-and-selectfrommodel-to-reduce-the-number-of-features '''
             selector = SelectFromModel(estimator=RandomForestClassifier(max_depth=1, random_state=random_state))
             selector.fit(X_train, y_train)
-            print('Columns before: ')
-            print(X_train.columns)
-           
+
             X_train = X_train.iloc[:,selector.get_support()]
-             
-            print('Columns after:')
-            print(X_train.columns)
             X_test = X_test.iloc[:,selector.get_support()]
 
         if method == 'LogisticR':
@@ -144,7 +136,7 @@ def train_test(X, y, id_col, clf, random_state, nominal_idx,
         # Replace our default classifier clf with an tuned one
         if tune:
             clf = tune_hyperparams(X=X_train, y=y_train, groups=upsampled_groups, 
-                                   method=method, random_state=random_state)
+                                   method=method, random_state=random_state, pos_label=pos_label)
         else:
             clf.fit(X_train.values, y_train.values)
     
@@ -157,7 +149,7 @@ def train_test(X, y, id_col, clf, random_state, nominal_idx,
 
         # Store TPR and AUC
         # Thank you sklearn documentation https://scikit-learn.org/stable/auto_examples/model_selection/plot_roc_crossval.html
-        fpr, tpr, thresholds = roc_curve(y_test, y_test_probas, pos_label=0)
+        fpr, tpr, thresholds = roc_curve(y_test, y_test_probas, pos_label=pos_label)
         tprs.append(interp(fpr_mean, fpr, tpr))
         tprs[-1][0] = 0.0
         roc_auc = auc(fpr, tpr)
@@ -169,16 +161,15 @@ def train_test(X, y, id_col, clf, random_state, nominal_idx,
 
         # Calculate feature importance while we're here, using SHAP
         if importance:
-            shap_values_fold = metrics.calc_shap(X_train=X_train, X_test=X_test,
-                                            model=clf, method=method)
+            shap_values_fold = metrics.calc_shap(X_train=X_train, X_test=X_test, model=clf, method=method, pos_label=pos_label)
             shap_values.append(shap_values_fold)
-            test_indices.append(test_index)
+            feats.append(list(X_test.columns))
     
     train_res = pd.concat(train_res, copy=True)
     test_res = pd.concat(test_res, copy=True)
 
     return {'tprs': tprs, 'aucs': aucs,  
-            'shap_values': shap_values, 'test_indices': test_indices, 
+            'shap_values': shap_values, 'features': feats, 
             'train_res': train_res, 'test_res': test_res}
 
 def predict(fs, output_path, write_header, n_lags=None, models=None, n_runs=5, select_feats=False,
@@ -201,7 +192,7 @@ def predict(fs, output_path, write_header, n_lags=None, models=None, n_runs=5, s
         max_depth = 5 
     
     # If no custom models are given, run all defaults. Start building a dictionary.
-    if not models: # hmm, did we remove xgboost?
+    if not models:
         models = {
             'LogisticR': None, 
             'RF': None, 
@@ -213,9 +204,9 @@ def predict(fs, output_path, write_header, n_lags=None, models=None, n_runs=5, s
         aucs = []# Array of AUC scores
         fpr_mean = np.linspace(0, 1, 100)
         
-        shap_values = list() 
-        test_indices = list()
-
+        shap_values = [] 
+        feats = []
+        
         all_res = []
 
         # Do repeated runs
@@ -265,36 +256,12 @@ def predict(fs, output_path, write_header, n_lags=None, models=None, n_runs=5, s
                 d.update(common_fields)
                 all_res.append(pd.DataFrame([d]))
             
-            ''' Note the need to extend vs append here, since we're pulling in values
-                from a nested function call '''
             shap_values.extend(res['shap_values'])
-            test_indices.extend(res['test_indices'])
+            feats.extend(res['features'])
             tprs.extend(res['tprs'])
             aucs.extend(res['aucs'])
- 
-        # Get and save all the shap values
-        if importance:
-
-            ''' Don't forget to drop the groups col and unselected feats.
-                Otherwise, we'll have issues with alignment.'''
-            # TODO - diff features may be selected for each run. Figure out how to handle.
-            
-            X_test, shap_values = metrics.gather_shap(
-                X=X.drop(columns=[fs.id_col]), method=method, 
-                shap_values=shap_values, test_indices=test_indices)
-
-            filename = '%s_%s_%d_lags'.format(fs.name, method, n_lags)
-            if tune:
-                filename += '_tuned'
-            filename += '.ob'
-            
-            with open(output_path + 'X_test_' + filename, 'wb') as fp:
-                pickle.dump(X_test, fp)
-
-            with open(output_path + 'shap_' + filename, 'wb') as fp:
-                pickle.dump(shap_values, fp)
         
-        print('Saving performance metrics...')
+        print('Saving performance metrics for all runs.')
         
         # Save individual run results
         all_res = pd.concat(all_res)
@@ -311,12 +278,19 @@ def predict(fs, output_path, write_header, n_lags=None, models=None, n_runs=5, s
         test_auc_res.update(common_fields)
         pd.DataFrame([test_auc_res]).to_csv(output_path + 'auc.csv', encoding='utf-8', mode=mode, header=write_header,index=False)
 
-        # Kind of dumb, but lets us quickly use shap values to preselect features in the select_feats() function
-        # Will change this later, I'm sure
+        # Get and save all the shap values
         if importance:
-            return X_test, shap_values 
-        else:
-            return None
+            shap_df = metrics.gather_shap(shap_values, feats)
+
+            filename = fs.name + '_' + method + '_' + str(fs.n_lags)
+            if tune:
+                filename += '_tuned'
+            filename += '.ob'
+            
+            with open(output_path + 'shap_df_' + filename, 'wb') as fp:
+                pickle.dump(shap_df, fp)
+        
+        print('Prediction task complete!')
     
 
     
