@@ -3,7 +3,7 @@
 
 # # Loading
 
-# In[1]:
+# In[ ]:
 
 
 # IO
@@ -51,7 +51,7 @@ plt.rcParams.update({'figure.autolayout': True})
 # plt.rcParams.update({'figure.facecolor': [1.0, 1.0, 1.0, 1.0]})
 
 
-# In[2]:
+# In[ ]:
 
 
 # Load the data
@@ -64,7 +64,7 @@ df.head()
 # Thank you to Jason Brownlee
 # https://machinelearningmastery.com/basic-data-cleaning-for-machine-learning/
 
-# In[3]:
+# In[ ]:
 
 
 # Instantiate a Dataset class
@@ -72,7 +72,7 @@ dataset = data.Dataset(df, id_col = 'PtID')
 dataset
 
 
-# In[4]:
+# In[ ]:
 
 
 # -------- Perform an initial cleaning of the dataset ----------
@@ -104,7 +104,7 @@ dataset.df.head()
 
 # ### Organize candidate features
 
-# In[5]:
+# In[ ]:
 
 
 ''' 
@@ -122,7 +122,7 @@ feat_categories = {
 feat_categories
 
 
-# In[6]:
+# In[ ]:
 
 
 ''' This dataset has several repeated measures for validated instruments, 
@@ -162,7 +162,7 @@ for k,v in consts.SCORES.items():
         feat_categories['scores'] += [prefix + v['suffix']]
 
 
-# In[7]:
+# In[ ]:
 
 
 ''' Create a catch-all category of remaining features, to ensure we got everything '''
@@ -178,7 +178,7 @@ other_feats
 
 # ### Generate new features
 
-# In[8]:
+# In[ ]:
 
 
 ''' Create new columns for demographic and medical variables
@@ -194,7 +194,7 @@ feat_categories['demographics'] += [newcol]
 
 # ### Create featuresets
 
-# In[9]:
+# In[ ]:
 
 
 static_featuresets = list()
@@ -258,7 +258,7 @@ static_featuresets
 
 # Extract temporal features by converting main dataset's df from wide-form to long-form.
 
-# In[10]:
+# In[ ]:
 
 
 rows = []
@@ -341,7 +341,7 @@ horizons_df = horizons_df.loc[horizons_df['DateEnroll'] < horizons_df['date']]
 
 # ### Generate new features
 
-# In[11]:
+# In[ ]:
 
 
 # Add binary indicator of any usage (not just number of times used) on a given day
@@ -357,7 +357,7 @@ horizons_df = features.get_temporal_feats(df=horizons_df, start_date_col='DateEn
 horizons_df
 
 
-# In[12]:
+# In[ ]:
 
 
 ''' Quick fix for duplicates that are introduced...
@@ -368,7 +368,7 @@ horizons_df.drop(df.index, axis=0, inplace=True)
 horizons_df
 
 
-# In[13]:
+# In[ ]:
 
 
 temporal_featuresets = list()
@@ -455,17 +455,23 @@ for horizon in consts.TARGET_HORIZONS:
     temporal_featuresets
 
 
+# In[ ]:
+
+
+# Sanity check
+temporal_featuresets[0].df
+
 
 # # Prediction
 
-# In[15]:
+# In[ ]:
 
 
 # Sanity check - this column should NOT be in the final set
 # static_featuresets[0].df['total_days_8']
 
 
-# In[16]:
+# In[ ]:
 
 
 target_col = 'adherent'
@@ -495,15 +501,32 @@ for t_feats in temporal_featuresets:
 
 
 # ## Study 1: Predict Adherence from MEMS Data Only
+# ### Do prediction task
 
-# ### Tune number of lags
-# In[27]:
+# In[ ]:
 
-''' Test the model performance for a range of lags (number of previous inputs)
-      and range of max_depths (since training with RF by default)
-    max_depth exploration will help ensure we aren't overfitting.
-'''
-write_header = True # Write header the first time
-for t_feats in temporal_featuresets:
-    models.tune_lags(t_feats, write_header)
+
+# ----- Now predict using optimal number of lags for each horizon--- 
+n_lags = 2 # Removed study month so can keep this for both study_day and study_week
+
+for t_feats in [temporal_featuresets[1]]:    
+        
+    # MANUALLY CHANGE MAX DEPTH IN CODE BEFOREHAND
+#     models.predict_from_mems(t_feats, n_lags)
+    output_path = consts.OUTPUT_PATH_PRIMARY + '/prediction_task/'
+
+    # Get a set of lagged features that's ready to go!
+    fs_lagged = t_feats.prep_for_modeling(n_lags)
+
+    # Do a non-tuned and an tuned run, for comparison's sake
+    models.predict(fs_lagged, output_path=output_path, write_header = write_header, select_feats=False, tune=False, importance=False)  
     write_header = False
+    models.predict(fs_lagged, output_path=output_path, write_header = write_header, select_feats=True, tune=True, importance=True)
+             
+# ## Study 2: Predict Adherence from Demographic and Med Record Data
+
+# In[ ]:
+
+
+# TODO - build LSTM, following Esteban et al's approach
+

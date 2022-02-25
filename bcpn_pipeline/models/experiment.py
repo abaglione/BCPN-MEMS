@@ -2,7 +2,7 @@ from ..consts import OUTPUT_PATH_PRIMARY
 from .predict import predict
 from sklearn.ensemble import RandomForestClassifier
 
-def tune_lags(fs, write_header):
+def tune_lags(fs):
     
     output_path = OUTPUT_PATH_PRIMARY + '/tuned_lags/'
     
@@ -40,11 +40,9 @@ def tune_lags(fs, write_header):
                 'RF': RandomForestClassifier(max_depth=max_depth, random_state=max_depth)
             }
 
-            predict(fs=all_feats, output_path=output_path, write_header=write_header,
+            predict(fs=all_feats, output_path=output_path,
                     n_lags=n_lags, models=models, select_feats=False, tune=False, 
                     importance=False, additional_fields={'max_depth': max_depth})
-
-            write_header = False # Don't write the header in subsequent runs
 
 def predict_from_mems(fs, n_lags):
 
@@ -53,7 +51,6 @@ def predict_from_mems(fs, n_lags):
     # Get a set of lagged features that's ready to go!
     fs_lagged = fs.prep_for_modeling(n_lags)
 
-    # Do a non-tuned and an tuned run, for comparison's sake
-    predict(fs_lagged, output_path=output_path, write_header = True, select_feats=False, tune=False, importance=False) 
-    
-    predict(fs_lagged, output_path=output_path, write_header = False, select_feats=True, tune=True, importance=True)
+    # Do a non-tuned and a tuned run, for comparison's sake
+    predict(fs_lagged, output_path=output_path, select_feats=False, tune=False, importance=False) 
+    predict(fs_lagged, output_path=output_path, select_feats=True, tune=True, importance=True)

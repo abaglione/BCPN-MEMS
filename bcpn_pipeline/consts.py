@@ -12,7 +12,8 @@ TIME_OF_DAY_PROPS ={
 }
 
 # Standard time horizons over which we want to predict
-TARGET_HORIZONS = ['study_day', 'study_week', 'study_month']
+# TARGET_HORIZONS = ['study_day', 'study_week', 'study_month']
+TARGET_HORIZONS = ['study_day', 'study_week']
 
 # Threshold under which participants are considered to be nonadherent
 ADHERENCE_THRESHOLD = 0.8

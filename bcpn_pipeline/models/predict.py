@@ -1,7 +1,9 @@
 import numpy as np
 import pandas as pd
+import json
+import asyncio
+import nest_asyncio
 from imblearn.over_sampling import SMOTENC
-import shap
 import pickle
 from scipy import interp
 from sklearn.experimental import enable_iterative_imputer
@@ -17,10 +19,11 @@ from tune_sklearn import TuneGridSearchCV
 
 from . import transform
 from . import metrics
+from .helpers import to_csv_async
 
 # Thank you to Lee Cai, who bootstrapped a similar function in a diff project
 # Modifications have been made to suit this project.
-def tune_hyperparams(X, y, groups, method, random_state, pos_label):
+def tune_hyperparams(X, y, groups, method, random_state):
     print('Getting tuned classifier using gridsearch.')
     # n_jobs = -1
     n_jobs = 1
@@ -55,18 +58,18 @@ def tune_hyperparams(X, y, groups, method, random_state, pos_label):
 
     cv = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=random_state)
 
-    # Create custom scorer
-    nonadherent_scorer = make_scorer(recall_score, pos_label=pos_label)
+    # Create custom scorer for specificity
+    scorer = make_scorer(recall_score, pos_label=0)
 
     tune_search = TuneGridSearchCV(estimator=model, param_grid=param_grid,
-                                   cv=cv, scoring=nonadherent_scorer,  n_jobs=n_jobs,
+                                   cv=cv, scoring=scorer,  n_jobs=n_jobs,
                                    verbose=2)
 
     tune_search.fit(X.values, y.values, groups)
     return tune_search.best_estimator_
 
 def train_test(X, y, id_col, clf, random_state, nominal_idx, 
-               method, select_feats, tune, importance, fpr_mean, pos_label=0): # We care more about negative labels - those who don't adhere. Pos label is 0, for us!
+               method, select_feats, tune, importance, fpr_mean): # We care more about negative labels - those who don't adhere. Pos label is 0, for us!
     tprs = [] # Array of true positive rates
     aucs = []# Array of AUC scores
 
@@ -136,7 +139,7 @@ def train_test(X, y, id_col, clf, random_state, nominal_idx,
         # Replace our default classifier clf with an tuned one
         if tune:
             clf = tune_hyperparams(X=X_train, y=y_train, groups=upsampled_groups, 
-                                   method=method, random_state=random_state, pos_label=pos_label)
+                                   method=method, random_state=random_state)
         else:
             clf.fit(X_train.values, y_train.values)
     
@@ -149,19 +152,20 @@ def train_test(X, y, id_col, clf, random_state, nominal_idx,
 
         # Store TPR and AUC
         # Thank you sklearn documentation https://scikit-learn.org/stable/auto_examples/model_selection/plot_roc_crossval.html
-        fpr, tpr, thresholds = roc_curve(y_test, y_test_probas, pos_label=pos_label)
+        # Note we do not change pos_label here. Re-read Gu et al for explanation - focus is specificity for scoring, but not for curves
+        fpr, tpr, thresholds = roc_curve(y_test, y_test_probas) 
         tprs.append(interp(fpr_mean, fpr, tpr))
         tprs[-1][0] = 0.0
         roc_auc = auc(fpr, tpr)
         aucs.append(roc_auc)
     
-        # Store predicted and actual target values in dataframe
-        train_res.append(pd.DataFrame({'pred': y_train_pred, 'actual': y_train}))
-        test_res.append(pd.DataFrame({'pred': y_test_pred, 'actual': y_test}))
+        # Store predicted and y_true target values in dataframe
+        train_res.append(pd.DataFrame({'y_pred': y_train_pred, 'y_true': y_train}))
+        test_res.append(pd.DataFrame({'y_pred': y_test_pred, 'y_true': y_test}))
 
         # Calculate feature importance while we're here, using SHAP
         if importance:
-            shap_values_fold = metrics.calc_shap(X_train=X_train, X_test=X_test, model=clf, method=method, pos_label=pos_label)
+            shap_values_fold = metrics.calc_shap(X_train=X_train, X_test=X_test, model=clf, method=method, random_state=random_state)
             shap_values.append(shap_values_fold)
             feats.append(list(X_test.columns))
     
@@ -172,12 +176,10 @@ def train_test(X, y, id_col, clf, random_state, nominal_idx,
             'shap_values': shap_values, 'features': feats, 
             'train_res': train_res, 'test_res': test_res}
 
-def predict(fs, output_path, write_header, n_lags=None, models=None, n_runs=5, select_feats=False,
+def predict(fs, output_path, models=None, n_runs=5, select_feats=False,
             tune=False, importance=False, additional_fields=None):
 
-    mode = 'w' if write_header else 'a' # Set up mode
-
-    common_fields = {'n_lags': n_lags, 'featureset': fs.name, 'features_selected': select_feats, 
+    common_fields = {'n_lags': fs.n_lags, 'featureset': fs.name, 'features_selected': select_feats, 
                      'tuned': tune, 'target': fs.target_col}
     
     if additional_fields:
@@ -186,7 +188,7 @@ def predict(fs, output_path, write_header, n_lags=None, models=None, n_runs=5, s
     ''' Hacky - added just for predict_from_mems. 
     Would need to remove if re-tuning lags!
     Need to change pipeline later to accomodate passing in max_depth'''
-    if n_lags == 2: # Study day and study week
+    if fs.n_lags == 2: # Study day and study week
         max_depth = 1
     else: # Study month
         max_depth = 5 
@@ -243,8 +245,12 @@ def predict(fs, output_path, write_header, n_lags=None, models=None, n_runs=5, s
             print('Calculating predictive performance for this run.')
 
             # Get train and test results as separate dictionaries
-            train_perf_metrics = metrics.calc_performance_metrics(res['train_res'])
-            test_perf_metrics = metrics.calc_performance_metrics(res['test_res'])
+            train_perf_metrics = metrics.calc_performance_metrics(
+                y_true=res['train_res']['y_true'], y_pred=res['train_res']['y_pred']
+            )
+            test_perf_metrics = metrics.calc_performance_metrics(
+                y_true=res['test_res']['y_true'], y_pred=res['test_res']['y_pred']
+            )
 
             train_perf_metrics.update({'type': 'train'})
             test_perf_metrics.update({'type': 'test'})
@@ -263,33 +269,51 @@ def predict(fs, output_path, write_header, n_lags=None, models=None, n_runs=5, s
         
         print('Saving performance metrics for all runs.')
         
-        # Save individual run results
-        all_res = pd.concat(all_res)
-        all_res.to_csv(output_path + 'pred.csv', encoding='utf-8', mode=mode, header=write_header,index=False)
+        coroutines = []
         
-        # Calculate and save AUC Metrics
+        # Combine individual run results
+        all_res = pd.concat(all_res)
+        coroutines.append(
+            to_csv_async(all_res, filename=output_path + 'pred.csv', mode=mode)
+        )
+        
+        # Calculate aggregate AUC and ROC
         test_roc_res, test_auc_res = metrics.get_mean_roc_auc(tprs, aucs, fpr_mean)
         
         common_fields.update({'run': -1}) # Indicates these are aggregated results
         
         test_roc_res.update(common_fields)
-        pd.DataFrame().from_dict(test_roc_res).to_csv(output_path + 'roc.csv', encoding='utf-8', mode=mode, header=write_header,index=False)
-        
+        test_roc_res_df = pd.DataFrame().from_dict(test_roc_res)
+        coroutines.append(
+            to_csv_async(test_roc_res_df, fp=output_path + 'roc.csv')
+        )
+
         test_auc_res.update(common_fields)
-        pd.DataFrame([test_auc_res]).to_csv(output_path + 'auc.csv', encoding='utf-8', mode=mode, header=write_header,index=False)
+        test_auc_res_df = pd.DataFrame([test_auc_res])
+        coroutines.append(
+            to_csv_async(test_auc_res_df, fp=output_path + 'auc.csv')
+        )
+
+        # Thanks @SpazaM
+        # https://stackoverflow.com/questions/65977711/asyncio-run-until-complete-does-not-wait-that-all-coroutines-finish
+        
+        loop = asyncio.get_event_loop()
+        nest_asyncio.apply(loop)
+        loop.run_until_complete(asyncio.gather(*coroutines))
+        # loop.close()
 
         # Get and save all the shap values
         if importance:
             shap_df = metrics.gather_shap(shap_values, feats)
 
-            filename = fs.name + '_' + method + '_' + str(fs.n_lags)
+            filename = fs.name + '_' + method + '_' + str(fs.n_lags) + '_lags'
             if tune:
                 filename += '_tuned'
             filename += '.ob'
             
             with open(output_path + 'shap_df_' + filename, 'wb') as fp:
                 pickle.dump(shap_df, fp)
-        
+
         print('Prediction task complete!')
     
 

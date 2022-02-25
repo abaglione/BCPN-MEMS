@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from sklearn.metrics import accuracy_score, precision_recall_fscore_support, mean_absolute_error, roc_curve, auc, confusion_matrix
+from sklearn.metrics import accuracy_score, precision_recall_fscore_support, mean_absolute_error, recall_score, roc_curve, auc, confusion_matrix
 import shap
 
 def get_mean_roc_auc(tprs, aucs, fpr_mean):
@@ -21,33 +21,43 @@ def get_agg_auc(y_all, y_probas_all):
     fpr, tpr, thresholds = roc_curve(y_all, y_probas_all)
     return {'auc': auc(fpr, tpr)}, tpr, fpr
     
-def calc_performance_metrics(df, actual='actual', pred='pred'):
+# TODO: Add sensitivity and specificity, ignore support
+# Check Gu et al.
+def calc_performance_metrics(y_true, y_pred):
     print('Calculating standard performance metrics.')
     stats = {}
 
-    stats['accuracy'] = accuracy_score(y_true=df[actual], y_pred=df[pred])
+    stats['accuracy'] = accuracy_score(y_true=y_true, y_pred=y_pred)
     
-    precision, recall, f1_score, support = precision_recall_fscore_support(
-        y_true=df[actual], y_pred=df[pred], pos_label=0, average='binary'
+    precision, sensitivity, f1_score, support = precision_recall_fscore_support(
+        y_true=y_true, y_pred=y_pred, average='binary'
     )
+
+    specificity = recall_score(y_true=y_true, y_pred=y_pred)
     
-    stats.update({'precision': precision, 'recall': recall, 
-                  'f1_score': f1_score, 'support': support
-                 })
+    stats.update({'precision': precision, 'sensitivity': sensitivity, 
+                  'specificity': specificity, 'f1_score': f1_score, 'support': support})
 
     return stats
 
-def calc_shap(X_train, X_test, model, method, pos_label):
-    print('Calculating SHAP values.')
+def calc_shap(X_train, X_test, model, method, random_state, pos_label=1):
     shap_values = None
-    
+    nsamples_max = 100
+
+    print('Calculating SHAP values.')    
+
+    if X_train.shape[0] > nsamples_max:
+        X_train = shap.sample(X_train, nsamples=nsamples_max, random_state=random_state)
+
+    if X_test.shape[0] > nsamples_max:
+        X_test = shap.sample(X_test, nsamples=nsamples_max, random_state=random_state)
+
     if method == 'LogisticR':
         shap_values = shap.LinearExplainer(model, X_train).shap_values(X_test)
     elif method == 'RF':
         shap_values = shap.TreeExplainer(model).shap_values(X_test)[pos_label] # i.e., 0 or 1
     elif method == 'SVM':
-        X_train_sampled = shap.sample(X_train, 5)
-        shap_values = shap.KernelExplainer(model.predict_proba, X_train_sampled).shap_values(X_test)
+        shap_values = shap.KernelExplainer(model.predict_proba, X_train).shap_values(X_test)[pos_label]
 
     return shap_values
 
