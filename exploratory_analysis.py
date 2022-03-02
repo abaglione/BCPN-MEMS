@@ -50,7 +50,6 @@ import matplotlib.pyplot as plt
 plt.rcParams.update({'figure.autolayout': True})
 # plt.rcParams.update({'figure.facecolor': [1.0, 1.0, 1.0, 1.0]})
 
-
 # In[ ]:
 
 
@@ -123,7 +122,6 @@ feat_categories
 
 
 # In[ ]:
-
 
 ''' This dataset has several repeated measures for validated instruments, 
 such as the FACTB
@@ -501,28 +499,16 @@ for t_feats in temporal_featuresets:
 
 
 # ## Study 1: Predict Adherence from MEMS Data Only
-# ### Do prediction task
-
-# In[ ]:
-
 
 # ----- Now predict using optimal number of lags for each horizon--- 
-n_lags = 2 # Removed study month so can keep this for both study_day and study_week
+n_lags = 2
+for t_feats in [temporal_featuresets[1]]:
+    print(t_feats)    
 
-for t_feats in [temporal_featuresets[1]]:    
-        
     # MANUALLY CHANGE MAX DEPTH IN CODE BEFOREHAND
-#     models.predict_from_mems(t_feats, n_lags)
-    output_path = consts.OUTPUT_PATH_PRIMARY + '/prediction_task/'
+    models.predict_from_mems(t_feats, n_lags)     
 
-    # Get a set of lagged features that's ready to go!
-    fs_lagged = t_feats.prep_for_modeling(n_lags)
 
-    # Do a non-tuned and an tuned run, for comparison's sake
-    models.predict(fs_lagged, output_path=output_path, write_header = write_header, select_feats=False, tune=False, importance=False)  
-    write_header = False
-    models.predict(fs_lagged, output_path=output_path, write_header = write_header, select_feats=True, tune=True, importance=True)
-             
 # ## Study 2: Predict Adherence from Demographic and Med Record Data
 
 # In[ ]:

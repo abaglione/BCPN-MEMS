@@ -41,7 +41,7 @@ def tune_lags(fs):
             }
 
             predict(fs=all_feats, output_path=output_path,
-                    n_lags=n_lags, models=models, select_feats=False, tune=False, 
+                    models=models, select_feats=False, tune=False, 
                     importance=False, additional_fields={'max_depth': max_depth})
 
 def predict_from_mems(fs, n_lags):
@@ -52,5 +52,5 @@ def predict_from_mems(fs, n_lags):
     fs_lagged = fs.prep_for_modeling(n_lags)
 
     # Do a non-tuned and a tuned run, for comparison's sake
-    predict(fs_lagged, output_path=output_path, select_feats=False, tune=False, importance=False) 
+    # predict(fs_lagged, output_path=output_path, select_feats=False, tune=False, importance=False) 
     predict(fs_lagged, output_path=output_path, select_feats=True, tune=True, importance=True)

@@ -33,7 +33,7 @@ def calc_performance_metrics(y_true, y_pred):
         y_true=y_true, y_pred=y_pred, average='binary'
     )
 
-    specificity = recall_score(y_true=y_true, y_pred=y_pred)
+    specificity = recall_score(y_true=y_true, y_pred=y_pred, pos_label=0)
     
     stats.update({'precision': precision, 'sensitivity': sensitivity, 
                   'specificity': specificity, 'f1_score': f1_score, 'support': support})

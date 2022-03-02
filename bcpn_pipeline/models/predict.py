@@ -196,8 +196,8 @@ def predict(fs, output_path, models=None, n_runs=5, select_feats=False,
     # If no custom models are given, run all defaults. Start building a dictionary.
     if not models:
         models = {
-            'LogisticR': None, 
-            'RF': None, 
+            # 'LogisticR': None, 
+            # 'RF': None, 
             'SVM': None
         }
 
@@ -274,7 +274,7 @@ def predict(fs, output_path, models=None, n_runs=5, select_feats=False,
         # Combine individual run results
         all_res = pd.concat(all_res)
         coroutines.append(
-            to_csv_async(all_res, filename=output_path + 'pred.csv', mode=mode)
+            to_csv_async(all_res, fp=output_path + 'pred.csv')
         )
         
         # Calculate aggregate AUC and ROC

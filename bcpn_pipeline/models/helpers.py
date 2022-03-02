@@ -4,8 +4,8 @@ import os
 import aiofiles
 from aiocsv import AsyncDictWriter
 
-async def to_csv_async(df, fp, mode):
-    mode = 'w' if os.path.exists(fp) else 'a' # Set up mode
+async def to_csv_async(df, fp):
+    mode = 'a' if os.path.exists(fp) else 'w' # Set up mode
     header = list(df.columns)
     df_json = df.to_json(orient="records")
     rows = json.loads(df_json)
