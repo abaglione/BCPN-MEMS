@@ -100,8 +100,8 @@ def train_test(X, y, id_col, clf, random_state, nominal_idx,
         # Do imputation
         imputer = IterativeImputer(random_state=5)
         imputer.fit(X_train)
-        X_train = transform.impute(X_train, id_col, imputer)
-        X_test = transform.impute(X_test, id_col, imputer)
+        X_train = transform.impute(X_train, imputer)
+        X_test = transform.impute(X_test, imputer)
 
         try:
             # Perform upsampling to handle class imbalance
