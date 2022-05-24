@@ -184,7 +184,7 @@ def train_test(X, y, id_col, clf, random_state, nominal_idx,
             'shap_values': shap_values, 'features': feats, 
             'train_res': train_res, 'test_res': test_res}
 
-def predict(fs, max_depth, output_path, models=None, n_runs=5, select_feats=False,
+def predict(fs, models, output_path, n_runs=5, select_feats=False,
             tune=False, importance=False, additional_fields=None):
 
     common_fields = {'n_lags': fs.n_lags, 'featureset': fs.name, 'features_selected': select_feats, 
@@ -192,14 +192,6 @@ def predict(fs, max_depth, output_path, models=None, n_runs=5, select_feats=Fals
     
     if additional_fields:
         common_fields.update(additional_fields)
-    
-    # If no custom models are given, run all defaults. Start building a dictionary.
-    if not models:
-        models = {
-            'LogisticR': None, 
-            'RF': None, 
-            'SVM': None
-        }
 
     for method, clf in models.items():
         tprs = [] # Array of true positive rates
@@ -214,15 +206,6 @@ def predict(fs, max_depth, output_path, models=None, n_runs=5, select_feats=Fals
         # Do repeated runs
         for run in range(0, n_runs):
             random_state = run
-
-            # Get the correct classifier if it doesn't exist
-            if clf is None:
-                if method == 'LogisticR':
-                    clf = LogisticRegression(solver='liblinear', random_state=random_state)
-                elif method == 'RF':
-                    clf = RandomForestClassifier(max_depth=max_depth, random_state=random_state)
-                elif method == 'SVM':
-                    clf = SVC(probability=True, random_state=random_state)
 
             # Do training and testing
             print('Run %i of %i for %s model.' % (run + 1, n_runs, method))

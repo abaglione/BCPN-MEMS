@@ -27,6 +27,8 @@ import matplotlib.pyplot as plt
 plt.rcParams.update({'figure.autolayout': True})
 # plt.rcParams.update({'figure.facecolor': [1.0, 1.0, 1.0, 1.0]})
 
+
+
 # In[ ]:
 
 
@@ -545,12 +547,18 @@ for t_feats in temporal_featuresets:
 # In[ ]:
 
 
-# ----- Now predict using optimal number of lags for each horizon--- 
+# # ----- Now predict using optimal number of lags for each horizon--- 
 # n_lags = 2
 # for t_feats in temporal_featuresets:    
-
-#     # TODO: Add max-depth here
-#     models.predict_from_mems(t_feats, n_lags)     
+#     # TODO: Set RF max-depth here after tuning lags
+#     max_depth = -1
+#     models = {
+#         'LogisticR': LogisticRegression(solver='liblinear', random_state=random_state),
+#         'RF': RandomForestClassifier(max_depth=max_depth, random_state=random_state),
+#         'SVM': SVC(probability=True, random_state=random_state)
+#     }
+    
+#     models.predict_from_mems(t_feats, n_lags, models)     
 
 
 # ## Study 2: Predict Adherence from Demographic and Med Record Data
