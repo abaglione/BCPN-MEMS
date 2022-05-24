@@ -28,12 +28,20 @@ def tune_hyperparams(X, y, groups, method, random_state):
     # n_jobs = -1
     n_jobs = 1
     if method == 'LogisticR':
-        param_grid = {
-            'C': np.logspace(-4, 4, 20),
-            'penalty': ['l1'],  # Use LASSO for feature selection
-            'solver': ['liblinear'],
-            'max_iter': [3000, 6000, 9000]
-        }
+        C = [1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1, 10, 100]
+        param_grid = [
+            {
+                'C': C,
+                'penalty': ['l2'],
+                'solver': ['lbfgs', 'liblinear']
+            },
+            # {
+            #     'C': C,
+            #     'penalty': ['elasticnet'], 
+            #     'solver': ['saga']
+            # }
+            # 'max_iter': [3000, 6000, 9000]
+        ]
         model = LogisticRegression(random_state=random_state)
 
     elif method == 'RF':
@@ -98,7 +106,7 @@ def train_test(X, y, id_col, clf, random_state, nominal_idx,
         try:
             # Perform upsampling to handle class imbalance
             smote = SMOTENC(random_state=random_state, categorical_features=nominal_idx)
-            X_train, y_train, upsampled_groups = transform.upsample(X, y, id_col, smote)
+            X_train, y_train, upsampled_groups = transform.upsample(X_train, y_train, id_col, smote)
         
         except ValueError:       
             # Set n_neighbors = n_samples
@@ -136,7 +144,7 @@ def train_test(X, y, id_col, clf, random_state, nominal_idx,
             X_train = transform.scale(X_train, scaler)
             X_test = transform.scale(X_test, scaler)
 
-        # Replace our default classifier clf with an tuned one
+        # Replace our default classifier clf with a tuned one
         if tune:
             clf = tune_hyperparams(X=X_train, y=y_train, groups=upsampled_groups, 
                                    method=method, random_state=random_state)
@@ -176,7 +184,7 @@ def train_test(X, y, id_col, clf, random_state, nominal_idx,
             'shap_values': shap_values, 'features': feats, 
             'train_res': train_res, 'test_res': test_res}
 
-def predict(fs, output_path, models=None, n_runs=5, select_feats=False,
+def predict(fs, max_depth, output_path, models=None, n_runs=5, select_feats=False,
             tune=False, importance=False, additional_fields=None):
 
     common_fields = {'n_lags': fs.n_lags, 'featureset': fs.name, 'features_selected': select_feats, 
@@ -185,19 +193,11 @@ def predict(fs, output_path, models=None, n_runs=5, select_feats=False,
     if additional_fields:
         common_fields.update(additional_fields)
     
-    ''' Hacky - added just for predict_from_mems. 
-    Would need to remove if re-tuning lags!
-    Need to change pipeline later to accomodate passing in max_depth'''
-    if fs.n_lags == 2: # Study day and study week
-        max_depth = 1
-    else: # Study month
-        max_depth = 5 
-    
     # If no custom models are given, run all defaults. Start building a dictionary.
     if not models:
         models = {
-            # 'LogisticR': None, 
-            # 'RF': None, 
+            'LogisticR': None, 
+            'RF': None, 
             'SVM': None
         }
 

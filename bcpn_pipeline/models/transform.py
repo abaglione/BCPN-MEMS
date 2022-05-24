@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 
-def impute(df, id_col, imputer):
+def impute(df, imputer):
     print('Imputing missing data.')
      
     # Impute numerics and categoricals

@@ -8,41 +8,18 @@
 
 # IO
 from pathlib import Path
-try:
-    import cPickle as pickle
-except ModuleNotFoundError:
-    import pickle
 
 # Utility Libraries
-import math
-from datetime import datetime
 import re
-import csv
 import itertools
 
 # Data Processing
 import pandas as pd
-import numpy as np
 
 # Predictive Analytics
-import statsmodels.stats.api as sms
-from sklearn.feature_selection import VarianceThreshold, SelectPercentile
-from sklearn.experimental import enable_iterative_imputer
-from sklearn.impute import IterativeImputer
-from sklearn.model_selection import GridSearchCV
-from sklearn.model_selection import LeaveOneGroupOut
-from imblearn.over_sampling import SMOTE
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 from bcpn_pipeline import data, features, models, consts
-import shap
 
 # Viz
-import matplotlib as mpl
-from matplotlib.dates import DateFormatter
-from matplotlib.cbook import boxplot_stats
-import matplotlib.dates as mdates
-import matplotlib.transforms as mtrans
 import seaborn as sns
 sns.set_style("whitegrid")
 
@@ -122,6 +99,7 @@ feat_categories
 
 
 # In[ ]:
+
 
 ''' This dataset has several repeated measures for validated instruments, 
 such as the FACTB
@@ -500,13 +478,79 @@ for t_feats in temporal_featuresets:
 
 # ## Study 1: Predict Adherence from MEMS Data Only
 
-# ----- Now predict using optimal number of lags for each horizon--- 
-n_lags = 2
-for t_feats in [temporal_featuresets[1]]:
-    print(t_feats)    
+# ### Tune number of lags
 
-    # MANUALLY CHANGE MAX DEPTH IN CODE BEFOREHAND
-    models.predict_from_mems(t_feats, n_lags)     
+# In[ ]:
+
+
+''' Test the model performance for a range of lags (number of previous inputs)
+      and range of max_depths (since training with RF by default)
+    max_depth exploration will help ensure we aren't overfitting.
+'''
+for t_feats in temporal_featuresets:
+    models.tune_lags(t_feats)
+
+
+# In[ ]:
+
+
+results = pd.read_csv('results/tuned_lags/pred.csv')
+results
+
+
+# In[ ]:
+
+
+for col in ['n_lags', 'accuracy', 'max_depth']:
+    results[col] = pd.to_numeric(results[col])
+results
+
+
+# In[ ]:
+
+
+results['specificity_loss'] = 1-results['specificity']
+results
+
+
+# In[ ]:
+
+
+'''
+Takeaways:
+- Simpler models better for more granular time scales
+- 2 lags with shallow tree (max_depth 1) best for study_day - overfitting worsens after that
+- 1 lag with shallow tree (max_depth 1) best for study week
+-- lets go with 2 to make it easy, for experiment - match with study day
+- 4 lags with deeper tree (max depth 5) best for study_month
+'''
+
+for max_depth in range(1, 6):
+    df = results[results['max_depth'] == max_depth]
+    
+    g = sns.lineplot(x='n_lags',y='specificity_loss', hue='featureset', style='type', data=df)
+    g.set( ylim=(0, 0.5), title='Max Depth: ' + str(max_depth), ylabel='Specificity Loss')
+    plt.show()
+
+
+# In[ ]:
+
+
+for t_feats in temporal_featuresets: 
+    print(t_feats)
+
+
+# ### Do prediction task
+
+# In[ ]:
+
+
+# ----- Now predict using optimal number of lags for each horizon--- 
+# n_lags = 2
+# for t_feats in temporal_featuresets:    
+
+#     # TODO: Add max-depth here
+#     models.predict_from_mems(t_feats, n_lags)     
 
 
 # ## Study 2: Predict Adherence from Demographic and Med Record Data
