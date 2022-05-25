@@ -214,12 +214,11 @@ def predict(fs, output_path, n_runs=5, select_feats=False,
                 
                 # Chose to initialize methods here so that random_state could be controlled by the run number
                 if method == 'RF':
-                    clf = RandomForestClassifier(max_depth=kwargs.get('max_depth'), random_state=random_state)
-                
+                    max_depth = kwargs.get('max_depth')
+                    clf = RandomForestClassifier(max_depth=max_depth, random_state=random_state)
+                    common_fields.update({'max_depth': max_depth})
                 else:
-                    # Hackily remove max_depth since not applicable to non-tree models
-                    # It will have gotten passed through - should fix in a future version of this pipeline
-                    common_fields.pop('max_depth')
+                    common_fields.update({'max_depth': 'NA'})
 
                     if method == 'LogisticR':
                         clf = LogisticRegression(solver='liblinear', random_state=random_state)

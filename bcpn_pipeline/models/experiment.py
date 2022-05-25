@@ -52,5 +52,5 @@ def predict_from_mems(fs, n_lags, **kwargs):
     fs_lagged = fs.prep_for_modeling(n_lags)
 
     # Do a non-tuned and a tuned run, for comparison's sake
-    # predict(fs_lagged, output_path=output_path, select_feats=False, tune=False, importance=False) 
+    predict(fs_lagged, output_path=output_path, select_feats=False, tune=False, importance=False, **kwargs) 
     predict(fs_lagged, output_path=output_path, select_feats=True, tune=True, importance=True, **kwargs)
