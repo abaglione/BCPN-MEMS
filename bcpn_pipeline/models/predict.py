@@ -26,7 +26,7 @@ from .helpers import to_csv_async
 def tune_hyperparams(X, y, groups, method, random_state):
     print('Getting tuned classifier using gridsearch.')
     # n_jobs = -1
-    n_jobs = 1
+    n_jobs = 2
     if method == 'LogisticR':
         C = [1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1, 10, 100]
         param_grid = [
@@ -98,7 +98,7 @@ def train_test(X, y, id_col, clf, random_state, nominal_idx,
         X_test, y_test = X.loc[test_index, :], y[test_index]
 
         # Do imputation
-        imputer = IterativeImputer(random_state=5)
+        imputer = IterativeImputer(random_state=random_state)
         imputer.fit(X_train)
         X_train = transform.impute(X_train, imputer)
         X_test = transform.impute(X_test, imputer)
@@ -184,14 +184,17 @@ def train_test(X, y, id_col, clf, random_state, nominal_idx,
             'shap_values': shap_values, 'features': feats, 
             'train_res': train_res, 'test_res': test_res}
 
-def predict(fs, models, output_path, n_runs=5, select_feats=False,
-            tune=False, importance=False, additional_fields=None):
+def predict(fs, output_path, n_runs=5, select_feats=False,
+            tune=False, importance=False, **kwargs):
 
     common_fields = {'n_lags': fs.n_lags, 'featureset': fs.name, 'features_selected': select_feats, 
                      'tuned': tune, 'target': fs.target_col}
     
-    if additional_fields:
-        common_fields.update(additional_fields)
+    if kwargs:
+        common_fields.update(kwargs)
+
+    models = kwargs.get('models')
+    models = dict.fromkeys(['LogisticR', 'RF', 'SVM']) if not models else models
 
     for method, clf in models.items():
         tprs = [] # Array of true positive rates
@@ -206,6 +209,23 @@ def predict(fs, models, output_path, n_runs=5, select_feats=False,
         # Do repeated runs
         for run in range(0, n_runs):
             random_state = run
+
+            if clf is None:
+                
+                # Chose to initialize methods here so that random_state could be controlled by the run number
+                if method == 'RF':
+                    clf = RandomForestClassifier(max_depth=kwargs.get('max_depth'), random_state=random_state)
+                
+                else:
+                    # Hackily remove max_depth since not applicable to non-tree models
+                    # It will have gotten passed through - should fix in a future version of this pipeline
+                    common_fields.pop('max_depth')
+
+                    if method == 'LogisticR':
+                        clf = LogisticRegression(solver='liblinear', random_state=random_state)
+
+                    elif method == 'SVM':
+                        clf = SVC(probability=True, random_state=random_state)
 
             # Do training and testing
             print('Run %i of %i for %s model.' % (run + 1, n_runs, method))
@@ -238,7 +258,7 @@ def predict(fs, models, output_path, n_runs=5, select_feats=False,
             train_perf_metrics.update({'type': 'train'})
             test_perf_metrics.update({'type': 'test'})
             
-            common_fields.update({'method': method, 'run': run,
+            common_fields.update({'method': method, 'run': run, 'random_state': random_state,
                                   'n_features': X.shape[1], 'n_samples': X.shape[0]})
             
             for d in [train_perf_metrics, test_perf_metrics]:
