@@ -557,7 +557,7 @@ for t_feats in temporal_featuresets:
     else:
         max_depth = 5
 
-    models.predict_from_mems(t_feats, n_lags, max_depth=max_depth)     
+        models.predict_from_mems(t_feats, n_lags, max_depth=max_depth)     
 
 
 # ## Study 2: Predict Adherence from Demographic and Med Record Data

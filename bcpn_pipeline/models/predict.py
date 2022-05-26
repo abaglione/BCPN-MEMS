@@ -26,7 +26,7 @@ from .helpers import to_csv_async
 def tune_hyperparams(X, y, groups, method, random_state):
     print('Getting tuned classifier using gridsearch.')
     # n_jobs = -1
-    n_jobs = 2
+    n_jobs = 1
     if method == 'LogisticR':
         C = [1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1, 10, 100]
         param_grid = [
@@ -54,6 +54,7 @@ def tune_hyperparams(X, y, groups, method, random_state):
 
     elif method == 'SVM':
         # n_jobs = None
+        n_jobs = 2
         param_grid = {
             'C': [1, 10, 100],
             'gamma': [1, 0.1, 0.01, 0.001],
@@ -78,11 +79,11 @@ def tune_hyperparams(X, y, groups, method, random_state):
 
 def train_test(X, y, id_col, clf, random_state, nominal_idx, 
                method, select_feats, tune, importance, fpr_mean): # We care more about negative labels - those who don't adhere. Pos label is 0, for us!
+
     tprs = [] # Array of true positive rates
     aucs = []# Array of AUC scores
 
-    shap_values = list() 
-    feats = list()
+    shap_tuples = []
 
     train_res = [] # Array of dataframes of true vs pred labels
     test_res = [] # Array of dataframes of true vs pred labels
@@ -90,7 +91,7 @@ def train_test(X, y, id_col, clf, random_state, nominal_idx,
     # Set up outer CV
     ''' Need to be splitting at the subject level
         Thank you, Koesmahargyo et al.! ''' 
-    cv = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=random_state)
+    cv = StratifiedGroupKFold(n_splits=3, shuffle=True, random_state=random_state)
 
     # Do prediction task
     for train_index, test_index in cv.split(X=X, y=y, groups=X[id_col]):
@@ -171,18 +172,19 @@ def train_test(X, y, id_col, clf, random_state, nominal_idx,
         train_res.append(pd.DataFrame({'y_pred': y_train_pred, 'y_true': y_train}))
         test_res.append(pd.DataFrame({'y_pred': y_test_pred, 'y_true': y_test}))
 
-        # Calculate feature importance while we're here, using SHAP
         if importance:
-            shap_values_fold = metrics.calc_shap(X_train=X_train, X_test=X_test, model=clf, method=method, random_state=random_state)
-            shap_values.append(shap_values_fold)
-            feats.append(list(X_test.columns))
-    
+            feats = list(X_test.columns)
+            shap_values = metrics.calc_shap(X_train, X_test, clf, method, random_state)
+            shap_tuples.append((feats, shap_values))
+
     train_res = pd.concat(train_res, copy=True)
     test_res = pd.concat(test_res, copy=True)
+    
+    ret = {'tprs': tprs, 'aucs': aucs, 'train_res': train_res, 'test_res': test_res}
+    if importance:
+        ret.update({'shap_tuples': shap_tuples})
 
-    return {'tprs': tprs, 'aucs': aucs,  
-            'shap_values': shap_values, 'features': feats, 
-            'train_res': train_res, 'test_res': test_res}
+    return ret
 
 def predict(fs, output_path, n_runs=5, select_feats=False,
             tune=False, importance=False, **kwargs):
@@ -200,9 +202,6 @@ def predict(fs, output_path, n_runs=5, select_feats=False,
         tprs = [] # Array of true positive rates
         aucs = []# Array of AUC scores
         fpr_mean = np.linspace(0, 1, 100)
-        
-        shap_values = [] 
-        feats = []
         
         all_res = []
 
@@ -242,6 +241,27 @@ def predict(fs, output_path, n_runs=5, select_feats=False,
             res = train_test(X=X, y=y, id_col=fs.id_col, clf=clf, random_state=random_state, 
                              nominal_idx=nominal_idx, method=method, select_feats=select_feats,
                              tune=tune, importance=importance, fpr_mean=fpr_mean)
+
+            # Get and save all the shap values
+            if importance:
+                # Save shap values
+                print('Saving shap values for each fold of this run...')
+                fold = 0                
+                for (feats, shap_values) in res['shap_tuples']:
+
+                    filename = fs.name + '_' + method + '_' + str(fs.n_lags) + '_lags'
+                    if tune:
+                        filename += '_tuned'
+                    
+                    filename = filename + '_run_' + str(run) + '_fold' + str(fold) + '.ob'
+
+                    with open(output_path + 'feats_' + filename, 'wb') as fp:
+                        pickle.dump(feats, fp)
+
+                    with open(output_path + 'shap_' + filename, 'wb') as fp:
+                        pickle.dump(shap_values, fp)
+
+                    fold += 1
                 
             # Save all relevant stats
             print('Calculating predictive performance for this run.')
@@ -264,11 +284,12 @@ def predict(fs, output_path, n_runs=5, select_feats=False,
                 d.update(common_fields)
                 all_res.append(pd.DataFrame([d]))
             
-            shap_values.extend(res['shap_values'])
-            feats.extend(res['features'])
+            # TPR and AUC will be calculated across all runs and folds at the very end
             tprs.extend(res['tprs'])
             aucs.extend(res['aucs'])
-        
+
+            print('Prediction task complete!')
+
         print('Saving performance metrics for all runs.')
         
         coroutines = []
@@ -303,20 +324,6 @@ def predict(fs, output_path, n_runs=5, select_feats=False,
         nest_asyncio.apply(loop)
         loop.run_until_complete(asyncio.gather(*coroutines))
         # loop.close()
-
-        # Get and save all the shap values
-        if importance:
-            shap_df = metrics.gather_shap(shap_values, feats)
-
-            filename = fs.name + '_' + method + '_' + str(fs.n_lags) + '_lags'
-            if tune:
-                filename += '_tuned'
-            filename += '.ob'
-            
-            with open(output_path + 'shap_df_' + filename, 'wb') as fp:
-                pickle.dump(shap_df, fp)
-
-        print('Prediction task complete!')
     
 
     
