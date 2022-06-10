@@ -10,72 +10,16 @@ from sklearn.experimental import enable_iterative_imputer
 from sklearn.impute import IterativeImputer
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.feature_selection import SelectFromModel
-from sklearn.model_selection import GridSearchCV, StratifiedGroupKFold
+from sklearn.model_selection import StratifiedGroupKFold
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import SVC
-from sklearn.metrics import roc_curve, auc, recall_score, make_scorer
-from tune_sklearn import TuneGridSearchCV
+from sklearn.metrics import roc_curve, auc
 
+from . import optimize
 from . import transform
 from . import metrics
 from .helpers import to_csv_async
-
-# Thank you to Lee Cai, who bootstrapped a similar function in a diff project
-# Modifications have been made to suit this project.
-def tune_hyperparams(X, y, groups, method, random_state):
-    print('Getting tuned classifier using gridsearch.')
-    # n_jobs = -1
-    n_jobs = 1
-    if method == 'LogisticR':
-        C = [1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1, 10, 100]
-        param_grid = [
-            {
-                'C': C,
-                'penalty': ['l2'],
-                'solver': ['lbfgs', 'liblinear']
-            },
-            # {
-            #     'C': C,
-            #     'penalty': ['elasticnet'], 
-            #     'solver': ['saga']
-            # }
-            # 'max_iter': [3000, 6000, 9000]
-        ]
-        model = LogisticRegression(random_state=random_state)
-
-    elif method == 'RF':
-        param_grid = {
-            'n_estimators': [50, 100, 250, 500],
-            'max_depth': [1, 2, 3],
-            'min_samples_leaf': [1, 2, 3]
-        }
-        model = RandomForestClassifier(oob_score=True, random_state=random_state)
-
-    elif method == 'SVM':
-        # n_jobs = None
-        n_jobs = 2
-        param_grid = {
-            'C': [1, 10, 100],
-            'gamma': [1, 0.1, 0.01, 0.001],
-            'kernel': ['rbf'] # Robust to noise - no need to do RFE
-        }
-        
-        model = SVC(probability=True, random_state=random_state)
-
-    print('n_jobs = ' + str(n_jobs))
-
-    cv = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=random_state)
-
-    # Create custom scorer for specificity
-    scorer = make_scorer(recall_score, pos_label=0)
-
-    tune_search = TuneGridSearchCV(estimator=model, param_grid=param_grid,
-                                   cv=cv, scoring=scorer,  n_jobs=n_jobs,
-                                   verbose=2)
-
-    tune_search.fit(X.values, y.values, groups)
-    return tune_search.best_estimator_
 
 def train_test(X, y, id_col, clf, random_state, nominal_idx, 
                method, select_feats, tune, importance, fpr_mean): # We care more about negative labels - those who don't adhere. Pos label is 0, for us!
@@ -147,7 +91,7 @@ def train_test(X, y, id_col, clf, random_state, nominal_idx,
 
         # Replace our default classifier clf with a tuned one
         if tune:
-            clf = tune_hyperparams(X=X_train, y=y_train, groups=upsampled_groups, 
+            clf = optimize.tune_hyperparams(X=X_train, y=y_train, groups=upsampled_groups, 
                                    method=method, random_state=random_state)
         else:
             clf.fit(X_train.values, y_train.values)
