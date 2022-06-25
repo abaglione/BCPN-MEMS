@@ -115,8 +115,8 @@ def train_test(X, y, id_col, clf, random_state, nominal_idx,
 
         if importance:
             feats = list(X_test.columns)
-            shap_values = metrics.calc_shap(X_train, X_test, clf, method, random_state)
-            shap_tuples.append((feats, shap_values))
+            explainer, shap_values = metrics.calc_shap(X_train, X_test, clf, method, random_state)
+            shap_tuples.append((feats, explainer, shap_values))
 
     train_res = pd.concat(train_res, copy=True)
     test_res = pd.concat(test_res, copy=True)
@@ -200,7 +200,7 @@ def predict(fs, output_path, n_runs=5, select_feats=False,
                 # Save shap values
                 print('Saving shap values for each fold of this run...')
                 fold = 0                
-                for (feats, shap_values) in res['shap_tuples']:
+                for (feats, explainer, shap_values) in res['shap_tuples']:
 
                     filename = fs.name + '_' + method + '_' + str(fs.n_lags) + '_lags'
                     if tune:
@@ -211,8 +211,8 @@ def predict(fs, output_path, n_runs=5, select_feats=False,
                     with open(output_path + 'feats_' + filename, 'wb') as fp:
                         pickle.dump(feats, fp)
 
-                    with open(output_path + 'shap_' + filename, 'wb') as fp:
-                        pickle.dump(shap_values, fp)
+                    explainer.save('shap_explainer_' + filename)
+                    shap_values.save('shap_values_' + filename)
 
                     fold += 1
                 

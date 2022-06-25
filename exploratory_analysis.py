@@ -390,13 +390,10 @@ for horizon in consts.TARGET_HORIZONS:
         col = 'time_of_day'
         df2 = horizons_df.groupby(groupby_cols)[col].value_counts().reset_index(name='count')
         df2.rename(columns={'level_2': col}, inplace=True)
-        print(df2)
         df2 = df2.pivot_table(
             columns=col, index=['PtID', 'study_day'], values='count'
         ).reset_index().rename_axis(None, axis=1)
-        print(df2)
         df = df.merge(df2, on=groupby_cols, how='outer')
-        print(df)
         for col in consts.TIME_OF_DAY_PROPS['labels']:
             df[col] = pd.to_numeric(df[col].fillna(0).apply(lambda x: 1 if x > 0 else x))
             nominal_cols += [col]
@@ -584,7 +581,7 @@ for t_feats in temporal_featuresets:
     else:
         max_depth = 5
 
-    models.predict_from_mems(t_feats, n_lags, models={'XGB': None, 'SVM': None, 'RF': None, 'LogisticR': None}, max_depth=max_depth)       
+    models.predict_from_mems(t_feats, n_lags, max_depth=max_depth)       
 
 
 # ## Study 2: Predict Adherence from Demographic and Med Record Data
