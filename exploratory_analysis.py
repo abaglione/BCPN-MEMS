@@ -4,7 +4,8 @@
 # # Loading
 
 # In[1]:
-
+import faulthandler
+faulthandler.enable()
 
 # IO
 from pathlib import Path
@@ -24,7 +25,7 @@ from bcpn_pipeline import data, features, models, consts
 
 # Viz
 import seaborn as sns
-sns.set_style("whitegrid")
+# sns.set_style("whitegrid")
 
 import matplotlib.pyplot as plt
 plt.rcParams.update({'figure.autolayout': True})
@@ -557,7 +558,7 @@ for t_feats in temporal_featuresets:
     else:
         max_depth = 5
 
-        models.predict_from_mems(t_feats, n_lags, max_depth=max_depth)     
+        models.predict_from_mems(t_feats, n_lags, max_depth=max_depth, models={'SVM': None, 'XGB': None})     
 
 
 # ## Study 2: Predict Adherence from Demographic and Med Record Data

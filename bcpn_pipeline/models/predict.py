@@ -32,7 +32,7 @@ def train_test(X, y, id_col, clf, random_state, nominal_idx,
     # Set up outer CV
     ''' Need to be splitting at the subject level
         Thank you, Koesmahargyo et al.! ''' 
-    cv = StratifiedGroupKFold(r=5, shuffle=True, random_state=random_state)
+    cv = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=random_state)
 
     # Do prediction task
     for train_index, test_index in cv.split(X=X, y=y, groups=X[id_col]):
@@ -135,7 +135,8 @@ def predict(fs, output_path, n_runs=5, select_feats=False,
     
     if kwargs:
         common_fields.update(kwargs)
-        common_fields.pop('models') # This is a dictionary - don't include it
+        if kwargs.get('models'):
+            common_fields.pop('models') # This is a dictionary - don't include it
 
     models = kwargs.get('models')
     models = dict.fromkeys(['LogisticR', 'RF', 'XGB', 'SVM']) if not models else models
@@ -205,7 +206,7 @@ def predict(fs, output_path, n_runs=5, select_feats=False,
                     if tune:
                         filename += '_tuned'
                     
-                    filename = filename + '_run_' + str(run) + '_fold' + str(fold) + '.ob'
+                    filename = filename + '_run_' + str(run) + '_fold_' + str(fold) + '.ob'
 
                     with open(output_path + 'feats_' + filename, 'wb') as fp:
                         pickle.dump(feats, fp)

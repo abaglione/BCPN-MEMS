@@ -39,11 +39,11 @@ def tune_hyperparams(X, y, groups, method, random_state):
         model = RandomForestClassifier(oob_score=True, random_state=random_state)
 
     elif method == 'XGB':
-        n_jobs = 1 # Known bug with multiprocessing when using XGBoost necessitates this...
+        n_jobs = 2
         param_grid = {
-            'gamma': [0.5, 1, 2, 5],
+            'gamma': [0.5, 1, 3],
             'learning_rate': [0.01, 0.1, 0.3],
-            'max_depth': [3, 4, 5, 6],
+            'max_depth': [3, 5, 6],
             'min_child_weight': [1, 5, 10],
             'n_estimators': [100, 250, 500],
             'objective': ['binary:logistic'],
@@ -52,7 +52,7 @@ def tune_hyperparams(X, y, groups, method, random_state):
         model = XGBClassifier(use_label_encoder=False, random_state=random_state)
 
     elif method == 'SVM':
-        n_jobs = 2 # SVM needs to be paralellized
+        n_jobs = 2
         param_grid = {
             'C': [1, 10, 100],
             'gamma': [1, 0.1, 0.01, 0.001],
