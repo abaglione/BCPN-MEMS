@@ -3,9 +3,8 @@
 
 # # Loading
 
-# In[1]:
-import faulthandler
-faulthandler.enable()
+# In[ ]:
+
 
 # IO
 from pathlib import Path
@@ -15,6 +14,7 @@ import re
 import itertools
 
 # Data Processing
+import numpy as np
 import pandas as pd
 
 # Predictive Analytics
@@ -30,6 +30,9 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 plt.rcParams.update({'figure.autolayout': True})
 # plt.rcParams.update({'figure.facecolor': [1.0, 1.0, 1.0, 1.0]})
+
+# configure autoreloading of modules
+
 
 # In[ ]:
 
@@ -351,6 +354,18 @@ horizons_df
 # In[ ]:
 
 
+def get_col_mode(x):
+    m = x.mode()
+    
+    if isinstance(m, str):
+        return m
+    else:
+        try:
+            first_mode = m[0]
+            return first_mode
+        except Exception as e:
+            return np.nan
+
 temporal_featuresets = list()
 '''Group by our desired horizon and add standard metrics such as mean, std
 '''
@@ -359,9 +374,10 @@ for horizon in consts.TARGET_HORIZONS:
     nominal_cols = []
     groupby_cols = [dataset.id_col, horizon]
     
-    df = horizons_df.groupby(groupby_cols)['datetime'].agg({
-        'n_events': 'count'
-    }).reset_index()
+    # Get the total number of events for the given horizon
+    df = horizons_df.groupby(groupby_cols).agg(
+        n_events=('num_times_used_today', 'sum')
+    ).reset_index()
     
     if horizon == 'study_day':
         cols = ['is_weekday', 'day_of_week']
@@ -373,18 +389,21 @@ for horizon in consts.TARGET_HORIZONS:
         # Basically a manual one-hot encoding while we're here
         col = 'time_of_day'
         df2 = horizons_df.groupby(groupby_cols)[col].value_counts().reset_index(name='count')
-        df2 = df2.reset_index().pivot_table(
+        df2.rename(columns={'level_2': col}, inplace=True)
+        print(df2)
+        df2 = df2.pivot_table(
             columns=col, index=['PtID', 'study_day'], values='count'
         ).reset_index().rename_axis(None, axis=1)
-        
+        print(df2)
         df = df.merge(df2, on=groupby_cols, how='outer')
-        
+        print(df)
         for col in consts.TIME_OF_DAY_PROPS['labels']:
             df[col] = pd.to_numeric(df[col].fillna(0).apply(lambda x: 1 if x > 0 else x))
             nominal_cols += [col]
             
         df.rename(columns={x: 'time_of_day_' + x for x in consts.TIME_OF_DAY_PROPS['labels']},
                   inplace=True)
+        
     else:
         if horizon == 'study_week':
             denom = consts.DAYS_IN_WEEK
@@ -397,29 +416,30 @@ for horizon in consts.TARGET_HORIZONS:
 
         # Calculate avg and standard deviation of number of times used
         df2 = horizons_df.groupby(groupby_cols + ['study_day'])['num_times_used_today'].max().reset_index()
-        df2 = horizons_df.groupby(groupby_cols)['num_times_used_today'].agg({
-            'num_daily_events_mean': lambda x: x.sum() / denom
-        }).reset_index()
+        df2 = horizons_df.groupby(groupby_cols).agg(
+            num_daily_events_mean=('num_times_used_today', lambda x: x.sum() / denom)
+        ).reset_index()
+
         df = df.merge(df2, on=groupby_cols, how='outer')
 
         # Get most common time of day of event occurence
-        col = 'event_time_of_day_mode'
-        df2 = horizons_df.groupby(groupby_cols)['time_of_day'].agg({
-            col: pd.Series.mode
-        }).reset_index().drop(columns=['level_2'])
+        df2 = horizons_df.groupby(groupby_cols).agg(
+            event_time_of_day_mode=('time_of_day', get_col_mode)
+        ).reset_index()
+
         df = df.merge(df2, on=groupby_cols, how='outer')
         nominal_cols += [col]
 
     # Calculate adherence rate
     if 'day' in horizon:
-        df2 = horizons_df.groupby(groupby_cols)['withinrange'].agg({
-            'adherence_rate': 'max'
-        }).reset_index()
+        df2 = horizons_df.groupby(groupby_cols).agg(
+            adherence_rate=('withinrange', 'max')
+        ).reset_index()
     else:
         df2 = horizons_df.groupby(groupby_cols + ['study_day'])['withinrange'].max().reset_index() # Max will be 1 or 0
-        df2 = df2.groupby(groupby_cols)['withinrange'].agg({
-            'adherence_rate': lambda x: x.sum() / denom
-        }).reset_index()
+        df2 = df2.groupby(groupby_cols).agg(
+            adherence_rate=('withinrange', lambda x: x.sum() / denom)
+        ).reset_index()
     
     df = df.merge(df2, on=groupby_cols, how='outer')
     
@@ -439,7 +459,7 @@ for horizon in consts.TARGET_HORIZONS:
 
 
 # Sanity check
-temporal_featuresets[0].df
+temporal_featuresets[1].df
 
 
 # # Prediction
@@ -480,6 +500,12 @@ for t_feats in temporal_featuresets:
     t_feats.nominal_cols += [target_col]
 
 
+# In[ ]:
+
+
+
+
+
 # ## Study 1: Predict Adherence from MEMS Data Only
 
 # ### Tune number of lags
@@ -495,14 +521,14 @@ for t_feats in temporal_featuresets:
 #     models.tune_lags(t_feats)
 
 
-# In[2]:
+# In[ ]:
 
 
 # results = pd.read_csv('results/tuned_lags/pred.csv')
 # results
 
 
-# In[3]:
+# In[ ]:
 
 
 # for col in ['n_lags', 'accuracy', 'max_depth']:
@@ -510,14 +536,14 @@ for t_feats in temporal_featuresets:
 # results
 
 
-# In[4]:
+# In[ ]:
 
 
 # results['specificity_loss'] = 1-results['specificity']
 # results
 
 
-# In[6]:
+# In[ ]:
 
 
 # '''
@@ -536,7 +562,7 @@ for t_feats in temporal_featuresets:
 #     plt.show()
 
 
-# In[7]:
+# In[ ]:
 
 
 # for t_feats in temporal_featuresets: 
@@ -552,13 +578,13 @@ for t_feats in temporal_featuresets:
 n_lags = 2
 for t_feats in temporal_featuresets:    
     
-    # TODO: Set RF max-depth here after tuning lags
+    # TODO: Set RF max-depth here after tuning lags - Done
     if t_feats.horizon == 'study_day':
         max_depth = 1
     else:
         max_depth = 5
 
-        models.predict_from_mems(t_feats, n_lags, max_depth=max_depth, models={'SVM': None, 'XGB': None})     
+    models.predict_from_mems(t_feats, n_lags, models={'XGB': None, 'SVM': None, 'RF': None, 'LogisticR': None}, max_depth=max_depth)       
 
 
 # ## Study 2: Predict Adherence from Demographic and Med Record Data
