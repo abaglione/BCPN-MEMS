@@ -1,8 +1,5 @@
 import numpy as np
 import pandas as pd
-import json
-import asyncio
-import nest_asyncio
 from imblearn.over_sampling import SMOTENC
 import pickle
 from scipy import interp
@@ -15,11 +12,11 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import SVC
 from sklearn.metrics import roc_curve, auc
+from xgboost import XGBClassifier
 
 from . import optimize
 from . import transform
 from . import metrics
-from .helpers import to_csv_async
 
 def train_test(X, y, id_col, clf, random_state, nominal_idx, 
                method, select_feats, tune, importance, fpr_mean): # We care more about negative labels - those who don't adhere. Pos label is 0, for us!
@@ -35,7 +32,7 @@ def train_test(X, y, id_col, clf, random_state, nominal_idx,
     # Set up outer CV
     ''' Need to be splitting at the subject level
         Thank you, Koesmahargyo et al.! ''' 
-    cv = StratifiedGroupKFold(n_splits=3, shuffle=True, random_state=random_state)
+    cv = StratifiedGroupKFold(r=5, shuffle=True, random_state=random_state)
 
     # Do prediction task
     for train_index, test_index in cv.split(X=X, y=y, groups=X[id_col]):
@@ -138,9 +135,10 @@ def predict(fs, output_path, n_runs=5, select_feats=False,
     
     if kwargs:
         common_fields.update(kwargs)
+        common_fields.pop('models') # This is a dictionary - don't include it
 
     models = kwargs.get('models')
-    models = dict.fromkeys(['LogisticR', 'RF', 'SVM']) if not models else models
+    models = dict.fromkeys(['LogisticR', 'RF', 'XGB', 'SVM']) if not models else models
 
     for method, clf in models.items():
         tprs = [] # Array of true positive rates
@@ -156,10 +154,20 @@ def predict(fs, output_path, n_runs=5, select_feats=False,
             if clf is None:
                 
                 # Chose to initialize methods here so that random_state could be controlled by the run number
-                if method == 'RF':
+                if method == 'RF' or method == 'XGB':
                     max_depth = kwargs.get('max_depth')
-                    clf = RandomForestClassifier(max_depth=max_depth, random_state=random_state)
                     common_fields.update({'max_depth': max_depth})
+                    
+                    if method == 'RF':
+                        clf = RandomForestClassifier(max_depth=max_depth, random_state=random_state)
+                    else:
+                        clf = XGBClassifier(
+                            max_depth=max_depth, 
+                            objective='binary:logistic', 
+                            eval_metric='logloss',
+                            use_label_encoder=False, 
+                            random_state=random_state
+                            )
                 else:
                     common_fields.update({'max_depth': 'NA'})
 
@@ -235,39 +243,21 @@ def predict(fs, output_path, n_runs=5, select_feats=False,
             print('Prediction task complete!')
 
         print('Saving performance metrics for all runs.')
-        
-        coroutines = []
-        
+
         # Combine individual run results
-        all_res = pd.concat(all_res)
-        coroutines.append(
-            to_csv_async(all_res, fp=output_path + 'pred.csv')
-        )
-        
+        suffix = method + '_tuned' if tune else method
+
+        pd.concat(all_res).to_csv(output_path + 'pred_' + suffix + '.csv')
+
         # Calculate aggregate AUC and ROC
         test_roc_res, test_auc_res = metrics.get_mean_roc_auc(tprs, aucs, fpr_mean)
-        
         common_fields.update({'run': -1}) # Indicates these are aggregated results
         
+        # Save AUC and ROC
         test_roc_res.update(common_fields)
-        test_roc_res_df = pd.DataFrame().from_dict(test_roc_res)
-        coroutines.append(
-            to_csv_async(test_roc_res_df, fp=output_path + 'roc.csv')
-        )
-
         test_auc_res.update(common_fields)
-        test_auc_res_df = pd.DataFrame([test_auc_res])
-        coroutines.append(
-            to_csv_async(test_auc_res_df, fp=output_path + 'auc.csv')
-        )
 
-        # Thanks @SpazaM
-        # https://stackoverflow.com/questions/65977711/asyncio-run-until-complete-does-not-wait-that-all-coroutines-finish
-        
-        loop = asyncio.get_event_loop()
-        nest_asyncio.apply(loop)
-        loop.run_until_complete(asyncio.gather(*coroutines))
-        # loop.close()
-    
+        pd.DataFrame.from_dict(test_roc_res).to_csv(output_path + 'roc_' + suffix + '.csv')
+        pd.DataFrame([test_auc_res]).to_csv(output_path + 'auc_' + suffix + '.csv')
 
     

@@ -46,8 +46,10 @@ def tune_hyperparams(X, y, groups, method, random_state):
             'max_depth': [3, 4, 5, 6],
             'min_child_weight': [1, 5, 10],
             'n_estimators': [100, 250, 500],
+            'objective': ['binary:logistic'],
+            'eval_metric': ['logloss'] 
         }
-        model = XGBClassifier(random_state=random_state)
+        model = XGBClassifier(use_label_encoder=False, random_state=random_state)
 
     elif method == 'SVM':
         n_jobs = 2 # SVM needs to be paralellized

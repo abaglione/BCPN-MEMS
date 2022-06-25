@@ -54,32 +54,9 @@ def calc_shap(X_train, X_test, model, method, random_state, pos_label=1):
 
     if method == 'LogisticR':
         shap_values = shap.LinearExplainer(model, X_train).shap_values(X_test)
-    elif method == 'RF':
+    elif method == 'RF' or method == 'XGB':
         shap_values = shap.TreeExplainer(model).shap_values(X_test)
     elif method == 'SVM':
         shap_values = shap.KernelExplainer(model.predict_proba, X_train).shap_values(X_test)
 
     return shap_values
-
-# def gather_shap(X, method, shap_values, test_indices):
-#     print('Gathering SHAP stats.')
-
-#     # https://lucasramos-34338.medium.com/visualizing-variable-importance-using-shap-and-cross-validation-bd5075e9063a
-
-#     # Combine results from all iterations
-#     test_indices_all = test_indices[0]
-#     shap_values_all = np.array(shap_values[0])
-
-#     for i in range(1, len(test_indices)):
-#         test_indices_all = np.concatenate((test_indices_all, test_indices[i]), axis=0)
-        
-#         if method == 'RF' or method == 'SVM': # classifiers with multiple outputs
-#             shap_values_all = np.concatenate(
-#                 (shap_values_all, np.array(shap_values[i])), axis=1)
-#         else:
-#             shap_values_all = np.concatenate((shap_values_all, shap_values[i]), axis=0)
-
-#     # Bring back variable names
-#     X_test = pd.DataFrame(X.iloc[test_indices_all], columns=X.columns)
-
-#     return X_test, shap_values_all

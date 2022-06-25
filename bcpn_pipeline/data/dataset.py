@@ -79,14 +79,12 @@ class Dataset:
         if onehots_to_reverse:
             for prefix in onehots_to_reverse:
                 cols = [col for col in self.df.columns if prefix in col]
-                print(cols)
                 self.df[prefix.rstrip('_')] = self.df[cols].apply(
                     pd.to_numeric, errors='coerce'
                 ).idxmax(1).apply(
                     # Tried lstrip, but it strips the leading letter for some categories!
                     lambda x: x.replace(prefix, '') if type(x) == type('string') else x # Guards against NaNs
                 ) 
-                print(prefix)
                 self.df.drop(columns=cols, inplace=True)
                 
         print('Cleaning complete.')
