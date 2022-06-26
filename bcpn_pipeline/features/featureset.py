@@ -164,9 +164,9 @@ def series_to_supervised(df, time_col, target_col, n_in=1, n_out=1, dropnan=True
     for i in range(0, n_out):
         cols.append(df.shift(-i))
         if i == 0:
-            names += [('%s(t)' % df.columns[j]) for j in range(n_vars)]
+            names += [('%s (t)' % df.columns[j]) for j in range(n_vars)]
         else:
-            names += [('%s(t+%d)' % (df.columns[j], i)) for j in range(n_vars)]
+            names += [('%s (t+%d)' % (df.columns[j], i)) for j in range(n_vars)]
     
 	# put it all together
     agg = pd.concat(cols, axis=1)

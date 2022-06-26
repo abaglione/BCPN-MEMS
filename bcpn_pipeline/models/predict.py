@@ -206,13 +206,16 @@ def predict(fs, output_path, n_runs=5, select_feats=False,
                     if tune:
                         filename += '_tuned'
                     
-                    filename = filename + '_run_' + str(run) + '_fold_' + str(fold) + '.ob'
+                    filename = filename + '_run_' + str(run) + '_fold_' + str(fold)
 
-                    with open(output_path + 'feats_' + filename, 'wb') as fp:
+                    with open(output_path + 'feats_' + filename + '.pkl', 'wb') as fp:
                         pickle.dump(feats, fp)
 
-                    explainer.save('shap_explainer_' + filename)
-                    shap_values.save('shap_values_' + filename)
+                    with open(output_path + 'shap_explainer_' + filename + '.pkl', 'wb') as fp:
+                        pickle.dump(explainer, fp)
+                        
+                    with open(output_path + 'shap_values_' + filename + '.pkl', 'wb') as fp:
+                        pickle.dump(shap_values, fp)
 
                     fold += 1
                 

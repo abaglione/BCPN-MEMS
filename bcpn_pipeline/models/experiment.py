@@ -12,7 +12,7 @@ from statsmodels.regression.mixed_linear_model import MixedLM
 
 def tune_lags(fs):
     
-    output_path = OUTPUT_PATH_PRIMARY + '/tuned_lags/'
+    output_path = OUTPUT_PATH_PRIMARY + '   tuned_lags/'
     
     # Exclude first month (ramp-up period during which time users were getting used to the MEMS caps)
     if fs.horizon == 'study_day':
@@ -54,7 +54,7 @@ def tune_lags(fs):
 
 def predict_from_mems(fs, n_lags, **kwargs):
 
-    output_path = OUTPUT_PATH_PRIMARY + '/prediction_task/'
+    output_path = OUTPUT_PATH_PRIMARY + 'prediction_task/'
 
 
     # Get a set of lagged features that's ready to go!

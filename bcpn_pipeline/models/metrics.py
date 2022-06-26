@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support, mean_absolute_error, recall_score, roc_curve, auc, confusion_matrix
-from shap.explainers import Linear, Tree, Sampling
+import shap
 
 def get_mean_roc_auc(tprs, aucs, fpr_mean):
     print('Getting mean ROC AUC stats.')
@@ -48,19 +48,20 @@ def calc_shap(X_train, X_test, model, method, random_state, pos_label=1):
     print('Calculating SHAP values.')    
 
     if X_train.shape[0] > nsamples_max:
-        X_train = X_train.sample(n = nsamples_max)
+        X_train = shap.utils.sample(X_train, nsamples = nsamples_max, random_state=random_state)
 
     if X_test.shape[0] > nsamples_max:
-        X_test = X_test.sample(n = nsamples_max)
+        X_test = shap.utils.sample(X_train, nsamples = nsamples_max, random_state=random_state)
 
     if method == 'LogisticR':
-        explainer = Linear(model=model, data=X_train)
+        explainer = shap.explainers.Linear(model=model, masker=X_train)
 
     elif method == 'RF' or method == 'XGB':
-        explainer = Tree(model=model, data=X_train)
+        explainer = shap.explainers.Tree(model=model, data=X_train)
         
     elif method == 'SVM':
-        shap_values = Sampling(model=model, data=X_train)
+        explainer = shap.explainers.Sampling(model=model, data=X_train)
 
-    shap_values = explainer.shap_values(X=X_test)
+    # Return an explanation object (updated for new version of shap)
+    shap_values = explainer(X_test)
     return explainer, shap_values
