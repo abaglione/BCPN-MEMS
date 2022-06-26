@@ -60,7 +60,7 @@ def calc_shap(X_train, X_test, model, method, random_state, pos_label=1):
         explainer = shap.explainers.Tree(model=model, data=X_train)
         
     elif method == 'SVM':
-        explainer = shap.explainers.Kernel(model=model.predict_proba, data=X_train)
+        explainer = shap.explainers.Sampling(model=model.predict_proba, data=X_train)
 
     # Return an explanation object (updated for new version of shap)
     shap_values = explainer(X_test)
