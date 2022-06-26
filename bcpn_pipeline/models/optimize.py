@@ -43,7 +43,7 @@ def tune_hyperparams(X, y, groups, method, random_state):
         param_grid = {
             'gamma': [0.5, 1, 3],
             'learning_rate': [0.01, 0.1, 0.3],
-            'max_depth': [3, 5, 6],
+            'max_depth': [2, 3, 4],
             'min_child_weight': [1, 5, 10],
             'n_estimators': [100, 250, 500],
             'objective': ['binary:logistic'],
