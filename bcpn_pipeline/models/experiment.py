@@ -12,11 +12,11 @@ from statsmodels.regression.mixed_linear_model import MixedLM
 
 def tune_lags(fs):
     
-    output_path = OUTPUT_PATH_PRIMARY + '   tuned_lags/'
+    output_path = OUTPUT_PATH_PRIMARY + 'tuned_lags/'
     
     # Exclude first month (ramp-up period during which time users were getting used to the MEMS caps)
     if fs.horizon == 'study_day':
-        exclusion_thfitesh = 30
+        exclusion_thresh = 30
     elif fs.horizon == 'study_week':
         exclusion_thresh = 4
     elif fs.horizon == 'study_month':
@@ -28,7 +28,7 @@ def tune_lags(fs):
     if fs.horizon == 'study_month':
         lag_range = range(1, 5)
     else:
-        lag_range = range(1, 17)
+        lag_range = range(1, 8)
     
     
     for n_lags in lag_range:
@@ -37,10 +37,6 @@ def tune_lags(fs):
         #Perform final encoding, scaling, etc
         all_feats = fs.prep_for_modeling(n_lags)
         
-        # Ensure we got a lagged series as expected
-#         print(all_feats.df)
-#         print(all_feats.nominal_cols)
-
         # Also tune the tree depth - will help us with gridsearch later on
         for max_depth in range(1, 6):
             print('Using tree with max_depth of %i.' % (max_depth))

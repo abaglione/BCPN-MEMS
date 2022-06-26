@@ -133,8 +133,12 @@ def predict(fs, output_path, n_runs=5, select_feats=False,
     common_fields = {'n_lags': fs.n_lags, 'featureset': fs.name, 'features_selected': select_feats, 
                      'tuned': tune, 'target': fs.target_col}
     
+    max_depth = None
+
     if kwargs:
         common_fields.update(kwargs)
+        max_depth = kwargs.get('max_depth')
+
         if kwargs.get('models'):
             common_fields.pop('models') # This is a dictionary - don't include it
 
@@ -156,7 +160,6 @@ def predict(fs, output_path, n_runs=5, select_feats=False,
                 
                 # Chose to initialize methods here so that random_state could be controlled by the run number
                 if method == 'RF' or method == 'XGB':
-                    max_depth = kwargs.get('max_depth')
                     common_fields.update({'max_depth': max_depth})
                     
                     if method == 'RF':
@@ -202,19 +205,23 @@ def predict(fs, output_path, n_runs=5, select_feats=False,
                 fold = 0                
                 for (feats, explainer, shap_values) in res['shap_tuples']:
 
-                    filename = fs.name + '_' + method + '_' + str(fs.n_lags) + '_lags'
+                    filename = f'{fs.name}_{method}_{fs.n_lags}_lags'
+                    
+                    if max_depth:
+                        filename += f'_max_depth_{max_depth}'
+
                     if tune:
                         filename += '_tuned'
                     
-                    filename = filename + '_run_' + str(run) + '_fold_' + str(fold)
+                    filename = f'{filename}_run_{run}_fold_{fold}'
 
-                    with open(output_path + 'feats_' + filename + '.pkl', 'wb') as fp:
+                    with open(f'{output_path}feats_{filename}.pkl', 'wb') as fp:
                         pickle.dump(feats, fp)
 
-                    with open(output_path + 'shap_explainer_' + filename + '.pkl', 'wb') as fp:
+                    with open(f'{output_path}shap_explainer_{filename}.pkl', 'wb') as fp:
                         pickle.dump(explainer, fp)
                         
-                    with open(output_path + 'shap_values_' + filename + '.pkl', 'wb') as fp:
+                    with open(f'{output_path}shap_values_{filename}.pkl', 'wb') as fp:
                         pickle.dump(shap_values, fp)
 
                     fold += 1
@@ -249,9 +256,15 @@ def predict(fs, output_path, n_runs=5, select_feats=False,
         print('Saving performance metrics for all runs.')
 
         # Combine individual run results
-        suffix = method + '_tuned' if tune else method
+        filename = f'{fs.name}_{method}_{fs.n_lags}_lags'
+        
+        if max_depth:
+            filename += f'_max_depth_{max_depth}'
 
-        pd.concat(all_res).to_csv(output_path + 'pred_' + suffix + '.csv')
+        if tune:
+            filename += '_tuned'
+
+        pd.concat(all_res).to_csv(f'{output_path}{filename}_pred.csv')
 
         # Calculate aggregate AUC and ROC
         test_roc_res, test_auc_res = metrics.get_mean_roc_auc(tprs, aucs, fpr_mean)
@@ -261,7 +274,7 @@ def predict(fs, output_path, n_runs=5, select_feats=False,
         test_roc_res.update(common_fields)
         test_auc_res.update(common_fields)
 
-        pd.DataFrame.from_dict(test_roc_res).to_csv(output_path + 'roc_' + suffix + '.csv')
-        pd.DataFrame([test_auc_res]).to_csv(output_path + 'auc_' + suffix + '.csv')
+        pd.DataFrame.from_dict(test_roc_res).to_csv(f'{output_path}{filename}_roc.csv')
+        pd.DataFrame([test_auc_res]).to_csv(f'{output_path}{filename}_auc.csv')
 
     

@@ -23,20 +23,6 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import SVC
 from bcpn_pipeline import data, features, models, consts
 
-# Viz
-get_ipython().run_line_magic('matplotlib', 'inline')
-import seaborn as sns
-# sns.set_style("whitegrid")
-
-import matplotlib.pyplot as plt
-plt.rcParams.update({'figure.autolayout': True})
-# plt.rcParams.update({'figure.facecolor': [1.0, 1.0, 1.0, 1.0]})
-
-# configure autoreloading of modules
-get_ipython().run_line_magic('load_ext', 'autoreload')
-get_ipython().run_line_magic('autoreload', '2')
-
-
 # In[2]:
 
 
