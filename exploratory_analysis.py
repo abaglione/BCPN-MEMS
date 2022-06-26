@@ -3,7 +3,7 @@
 
 # # Loading
 
-# In[ ]:
+# In[1]:
 
 
 # IO
@@ -24,6 +24,7 @@ from sklearn.svm import SVC
 from bcpn_pipeline import data, features, models, consts
 
 # Viz
+get_ipython().run_line_magic('matplotlib', 'inline')
 import seaborn as sns
 # sns.set_style("whitegrid")
 
@@ -32,9 +33,11 @@ plt.rcParams.update({'figure.autolayout': True})
 # plt.rcParams.update({'figure.facecolor': [1.0, 1.0, 1.0, 1.0]})
 
 # configure autoreloading of modules
+get_ipython().run_line_magic('load_ext', 'autoreload')
+get_ipython().run_line_magic('autoreload', '2')
 
 
-# In[ ]:
+# In[2]:
 
 
 # Load the data
@@ -47,7 +50,7 @@ df.head()
 # Thank you to Jason Brownlee
 # https://machinelearningmastery.com/basic-data-cleaning-for-machine-learning/
 
-# In[ ]:
+# In[3]:
 
 
 # Instantiate a Dataset class
@@ -55,7 +58,7 @@ dataset = data.Dataset(df, id_col = 'PtID')
 dataset
 
 
-# In[ ]:
+# In[4]:
 
 
 # -------- Perform an initial cleaning of the dataset ----------
@@ -87,7 +90,7 @@ dataset.df.head()
 
 # ### Organize candidate features
 
-# In[ ]:
+# In[5]:
 
 
 ''' 
@@ -105,7 +108,7 @@ feat_categories = {
 feat_categories
 
 
-# In[ ]:
+# In[6]:
 
 
 ''' This dataset has several repeated measures for validated instruments, 
@@ -145,7 +148,7 @@ for k,v in consts.SCORES.items():
         feat_categories['scores'] += [prefix + v['suffix']]
 
 
-# In[ ]:
+# In[7]:
 
 
 ''' Create a catch-all category of remaining features, to ensure we got everything '''
@@ -161,7 +164,7 @@ other_feats
 
 # ### Generate new features
 
-# In[ ]:
+# In[8]:
 
 
 ''' Create new columns for demographic and medical variables
@@ -177,7 +180,7 @@ feat_categories['demographics'] += [newcol]
 
 # ### Create featuresets
 
-# In[ ]:
+# In[9]:
 
 
 static_featuresets = list()
@@ -241,7 +244,7 @@ static_featuresets
 
 # Extract temporal features by converting main dataset's df from wide-form to long-form.
 
-# In[ ]:
+# In[69]:
 
 
 rows = []
@@ -324,7 +327,7 @@ horizons_df = horizons_df.loc[horizons_df['DateEnroll'] < horizons_df['date']]
 
 # ### Generate new features
 
-# In[ ]:
+# In[70]:
 
 
 # Add binary indicator of any usage (not just number of times used) on a given day
@@ -337,10 +340,11 @@ horizons_df['used_today'] = horizons_df['num_times_used_today'].apply(
 ''' 
 horizons_df = features.get_temporal_feats(df=horizons_df, start_date_col='DateEnroll', 
                                           id_col='PtID', time_of_day_props=consts.TIME_OF_DAY_PROPS)
+horizons_df[horizons_df['study_month'] == 1]
 horizons_df
 
 
-# In[ ]:
+# In[71]:
 
 
 ''' Quick fix for duplicates that are introduced...
@@ -351,7 +355,13 @@ horizons_df.drop(df.index, axis=0, inplace=True)
 horizons_df
 
 
-# In[ ]:
+# In[72]:
+
+
+horizons_df.select_dtypes('category')
+
+
+# In[94]:
 
 
 def get_col_mode(x):
@@ -383,23 +393,28 @@ for horizon in consts.TARGET_HORIZONS:
         cols = ['is_weekday', 'day_of_week']
         df2 = horizons_df[groupby_cols + cols]
         df = df.merge(df2, on=groupby_cols, how='outer')
-        nominal_cols += cols
         
         # Add columns indicating if the MEMS cap was used during a given time(s) of day
         # Basically a manual one-hot encoding while we're here
         col = 'time_of_day'
         df2 = horizons_df.groupby(groupby_cols)[col].value_counts().reset_index(name='count')
         df2.rename(columns={'level_2': col}, inplace=True)
+
         df2 = df2.pivot_table(
             columns=col, index=['PtID', 'study_day'], values='count'
         ).reset_index().rename_axis(None, axis=1)
+        
         df = df.merge(df2, on=groupby_cols, how='outer')
+
         for col in consts.TIME_OF_DAY_PROPS['labels']:
             df[col] = pd.to_numeric(df[col].fillna(0).apply(lambda x: 1 if x > 0 else x))
-            nominal_cols += [col]
-            
-        df.rename(columns={x: 'time_of_day_' + x for x in consts.TIME_OF_DAY_PROPS['labels']},
+        
+        cols = {x: 'time_of_day_' + x for x in consts.TIME_OF_DAY_PROPS['labels']}
+        df.rename(columns=cols,
                   inplace=True)
+        
+        # Add to list of nominal cols after one-hot encoding
+        nominal_cols += [col for col in cols.values()]
         
     else:
         if horizon == 'study_week':
@@ -425,7 +440,9 @@ for horizon in consts.TARGET_HORIZONS:
         ).reset_index()
 
         df = df.merge(df2, on=groupby_cols, how='outer')
-        nominal_cols += [col]
+        
+        # Explicitly set dtype so we can later select and one-hot encode
+        df['event_time_of_day_mode'] = df['event_time_of_day_mode'].astype('category') 
 
     # Calculate adherence rate
     if 'day' in horizon:
@@ -449,14 +466,19 @@ for horizon in consts.TARGET_HORIZONS:
                                                     id_col=dataset.id_col,
                                                     horizon=horizon,
                                                     nominal_cols = nominal_cols))
-    temporal_featuresets
+
+
+# In[95]:
+
+
+# Sanity check
+temporal_featuresets[1].df.select_dtypes('category')
 
 
 # In[ ]:
 
 
-# Sanity check
-temporal_featuresets[1].df
+temporal_featuresets[1].nominal_cols
 
 
 # # Prediction
@@ -468,7 +490,7 @@ temporal_featuresets[1].df
 # static_featuresets[0].df['total_days_8']
 
 
-# In[ ]:
+# In[96]:
 
 
 target_col = 'adherent'
@@ -497,10 +519,10 @@ for t_feats in temporal_featuresets:
     t_feats.nominal_cols += [target_col]
 
 
-# In[ ]:
+# In[97]:
 
 
-
+temporal_featuresets[1].df
 
 
 # ## Study 1: Predict Adherence from MEMS Data Only
@@ -510,12 +532,12 @@ for t_feats in temporal_featuresets:
 # In[ ]:
 
 
-# ''' Test the model performance for a range of lags (number of previous inputs)
-#       and range of max_depths (since training with RF by default)
-#     max_depth exploration will help ensure we aren't overfitting.
-# '''
-# for t_feats in temporal_featuresets:
-#     models.tune_lags(t_feats)
+''' Test the model performance for a range of lags (number of previous inputs)
+      and range of max_depths (since training with RF by default)
+    max_depth exploration will help ensure we aren't overfitting.
+'''
+for t_feats in temporal_featuresets:
+    models.tune_lags(t_feats)
 
 
 # In[ ]:
@@ -559,29 +581,25 @@ for t_feats in temporal_featuresets:
 #     plt.show()
 
 
-# In[ ]:
-
-
-# for t_feats in temporal_featuresets: 
-#     print(t_feats)
-
-
 # ### Do prediction task
 
-# In[ ]:
+# In[99]:
 
 
 # ----- Now predict using optimal number of lags for each horizon--- 
-n_lags = 2
-for t_feats in temporal_featuresets:    
+# n_lags = 2
+# for t_feats in temporal_featuresets:    
+#     fs_lagged = t_feats.prep_for_modeling(n_lags)
+#     print(fs_lagged.df.columns)
+#     print(fs_lagged.df)
     
-    # TODO: Set RF max-depth here after tuning lags - Done
-    if t_feats.horizon == 'study_day':
-        max_depth = 1
-    else:
-        max_depth = 5
+#     # TODO: Set RF max-depth here after tuning lags - Done
+#     if t_feats.horizon == 'study_day':
+#         max_depth = 1
+#     else:
+#         max_depth = 5
 
-    models.predict_from_mems(t_feats, n_lags, max_depth=max_depth, n_runs=1)       
+#     models.predict_from_mems(t_feats, n_lags, models={'XGB': None}, max_depth=max_depth)       
 
 
 # ## Study 2: Predict Adherence from Demographic and Med Record Data

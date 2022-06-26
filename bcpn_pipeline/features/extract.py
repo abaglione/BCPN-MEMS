@@ -6,6 +6,8 @@ import itertools
 import numpy as np
 import pandas as pd
 import datetime
+
+from ..consts import DAYS_IN_WEEK
     
 def reset_index(df):
     """
@@ -92,19 +94,23 @@ def get_temporal_feats(df, start_date_col, id_col, time_of_day_props):
 
     if time_of_day_props:
         df['time_of_day'] = pd.cut(df['datetime'].dt.hour, time_of_day_props['bins'], labels=time_of_day_props['labels'])
-    
+
     df['is_weekday'] = df['datetime'].apply(
         lambda x: 1 if x.day_name() != "Saturday" and x.day_name() != "Sunday" else 0
     )
                                       
     df['study_day'] = (df['date'] - df[start_date_col]).dt.days
     df['day_of_week'] = df['date'].dt.day_name()
-    df['study_week'] = np.floor((df['date']- df[start_date_col]).dt.days / 7.0)
+    df['study_week'] = np.floor((df['date']- df[start_date_col]).dt.days / DAYS_IN_WEEK)
     
-    # Rough estimate of month
-    df['study_month'] = np.floor((df['date']- df[start_date_col]).dt.days / 30.0)
+    # Estimate of month
+    df['study_month'] = np.floor((df['date']- df[start_date_col]) / np.timedelta64(1, 'M'))
     
-    
+    for col in ['time_of_day', 'day_of_week']:
+        
+        # Explicitly set dtype
+        df[col] = df[col].astype('category') 
+
     return df
 
 def calc_standard_static_metrics(df, cols, col_prefix):
