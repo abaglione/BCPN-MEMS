@@ -158,7 +158,7 @@ def series_to_supervised(df, time_col, target_col, n_in=1, n_out=1, dropnan=True
 	# input sequence (t-n, ... t-1)
     for i in range(n_in, 0, -1):
         cols.append(df.shift(i))
-        names += [('%s(t-%d)' % (df.columns[j], i)) for j in range(n_vars)]
+        names += [('%s (t-%d)' % (df.columns[j], i)) for j in range(n_vars)]
     
 	# forecast sequence (t, t+1, ... t+n)
     for i in range(0, n_out):
@@ -186,8 +186,8 @@ def series_to_supervised(df, time_col, target_col, n_in=1, n_out=1, dropnan=True
              inplace=True)
     
     # drop the (t) suffix in the target column
-    agg.rename(columns = {target_col+'(t)': target_col}, inplace=True)
-    
+    agg.rename(columns = {target_col+' (t)': target_col}, inplace=True)
+    print(agg)
     return agg
 
 
