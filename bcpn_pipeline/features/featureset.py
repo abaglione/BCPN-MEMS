@@ -14,7 +14,7 @@ class Featureset:
         
         '''Used to store list of non-continuous columns (e.g., yes/no columns or
         ones that have been one-hot encoded) '''
-        self.nominal_cols = [self.id_col]
+        self.nominal_cols = []
         if nominal_cols:
             self.nominal_cols += nominal_cols
         
@@ -99,10 +99,15 @@ class Featureset:
 
         self.prune_nominals()
 
-    def prep_for_modeling(self, n_lags=None):
+    def prep_for_modeling(self, n_lags=None, reduce_collinearity=False):
         print('Preparing feature set for modeling.')
+    
+        # One hot encode categoricals
         self.one_hot_encode()
         
+        if reduce_collinearity:
+            self.handle_multicollinearity()
+
         # If this is a temporal fs
         if n_lags:
         
@@ -117,12 +122,17 @@ class Featureset:
         # Ensure target column is last
         end_col = fs.df.pop(fs.target_col)
         fs.df[fs.target_col] = end_col
+
+        # Finally, eliminate columns with 0 variance (all 0s)
+        print('Eliminating columns with 0 variance...')
+        fs.df = fs.df.loc[:, fs.df.any()]
+
         return fs
 
     def __repr__(self):    
         rep = '\n'.join([
             f'Name: { self.name }',
-            f'Number of features: {self.df.shape[1] - 2}', 
+            f'Number of features: {self.df.shape[1]-1}', # Id column is not a feature 
             f'Number of observations: {self.df.shape[0]}'
         ])
         

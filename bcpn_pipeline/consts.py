@@ -1,4 +1,11 @@
-OUTPUT_PATH_PRIMARY = 'results/'
+from pathlib import Path
+
+DATA_PATH = Path('data/')
+
+OUTPUT_PATH_PRIMARY = Path('results/')
+OUTPUT_PATH_LAGS = Path.joinpath(OUTPUT_PATH_PRIMARY, 'tuned_lags/')
+OUTPUT_PATH_PRED = Path.joinpath(OUTPUT_PATH_PRIMARY, 'prediction_task/')
+OUTPUT_PATH_LMM = Path.joinpath(OUTPUT_PATH_PRIMARY, 'lmm_task/')
 
 # Standard time-based constants
 SECONDS_IN_HOUR = 3600.0

@@ -3,7 +3,7 @@
 
 # # Loading
 
-# In[1]:
+# In[ ]:
 
 
 # IO
@@ -23,7 +23,15 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import SVC
 from bcpn_pipeline import data, features, models, consts
 
-# In[2]:
+# Viz
+import seaborn as sns
+# sns.set_style("whitegrid")
+
+import matplotlib.pyplot as plt
+plt.rcParams.update({'figure.autolayout': True})
+# plt.rcParams.update({'figure.facecolor': [1.0, 1.0, 1.0, 1.0]})
+
+# In[ ]:
 
 
 # Load the data
@@ -36,7 +44,7 @@ df.head()
 # Thank you to Jason Brownlee
 # https://machinelearningmastery.com/basic-data-cleaning-for-machine-learning/
 
-# In[3]:
+# In[ ]:
 
 
 # Instantiate a Dataset class
@@ -44,7 +52,7 @@ dataset = data.Dataset(df, id_col = 'PtID')
 dataset
 
 
-# In[4]:
+# In[ ]:
 
 
 # -------- Perform an initial cleaning of the dataset ----------
@@ -76,7 +84,7 @@ dataset.df.head()
 
 # ### Organize candidate features
 
-# In[5]:
+# In[ ]:
 
 
 ''' 
@@ -94,7 +102,7 @@ feat_categories = {
 feat_categories
 
 
-# In[6]:
+# In[ ]:
 
 
 ''' This dataset has several repeated measures for validated instruments, 
@@ -134,7 +142,7 @@ for k,v in consts.SCORES.items():
         feat_categories['scores'] += [prefix + v['suffix']]
 
 
-# In[7]:
+# In[ ]:
 
 
 ''' Create a catch-all category of remaining features, to ensure we got everything '''
@@ -150,7 +158,7 @@ other_feats
 
 # ### Generate new features
 
-# In[8]:
+# In[ ]:
 
 
 ''' Create new columns for demographic and medical variables
@@ -166,7 +174,7 @@ feat_categories['demographics'] += [newcol]
 
 # ### Create featuresets
 
-# In[9]:
+# In[ ]:
 
 
 static_featuresets = list()
@@ -230,7 +238,7 @@ static_featuresets
 
 # Extract temporal features by converting main dataset's df from wide-form to long-form.
 
-# In[69]:
+# In[ ]:
 
 
 rows = []
@@ -313,7 +321,7 @@ horizons_df = horizons_df.loc[horizons_df['DateEnroll'] < horizons_df['date']]
 
 # ### Generate new features
 
-# In[70]:
+# In[ ]:
 
 
 # Add binary indicator of any usage (not just number of times used) on a given day
@@ -330,7 +338,7 @@ horizons_df[horizons_df['study_month'] == 1]
 horizons_df
 
 
-# In[71]:
+# In[ ]:
 
 
 ''' Quick fix for duplicates that are introduced...
@@ -341,13 +349,13 @@ horizons_df.drop(df.index, axis=0, inplace=True)
 horizons_df
 
 
-# In[72]:
+# In[ ]:
 
 
 horizons_df.select_dtypes('category')
 
 
-# In[94]:
+# In[ ]:
 
 
 def get_col_mode(x):
@@ -454,7 +462,7 @@ for horizon in consts.TARGET_HORIZONS:
                                                     nominal_cols = nominal_cols))
 
 
-# In[95]:
+# In[ ]:
 
 
 # Sanity check
@@ -476,7 +484,7 @@ temporal_featuresets[1].nominal_cols
 # static_featuresets[0].df['total_days_8']
 
 
-# In[96]:
+# In[ ]:
 
 
 target_col = 'adherent'
@@ -505,87 +513,27 @@ for t_feats in temporal_featuresets:
     t_feats.nominal_cols += [target_col]
 
 
-# In[97]:
+# In[ ]:
 
 
 temporal_featuresets[1].df
 
 
-# ## Study 1: Predict Adherence from MEMS Data Only
-
-# ### Tune number of lags
-
-# In[ ]:
-
-
-''' Test the model performance for a range of lags (number of previous inputs)
-      and range of max_depths (since training with RF by default)
-    max_depth exploration will help ensure we aren't overfitting.
-'''
-for t_feats in temporal_featuresets:
-    models.tune_lags(t_feats)
-
-
-# In[ ]:
-
-
-# results = pd.read_csv('results/tuned_lags/pred.csv')
-# results
-
-
-# In[ ]:
-
-
-# for col in ['n_lags', 'accuracy', 'max_depth']:
-#     results[col] = pd.to_numeric(results[col])
-# results
-
-
-# In[ ]:
-
-
-# results['specificity_loss'] = 1-results['specificity']
-# results
-
-
-# In[ ]:
-
-
-# '''
-# Takeaways:
-# - Simpler models better for more granular time scales
-# - 2 lags with shallow tree (max_depth 1) best for study_day - overfitting worsens after that
-# - 1 lag with max_depth up to 5 best for study week
-# -- lets go with 2 lags to make it easy, for experiment - match with study day
-# '''
-
-# for max_depth in range(1, 6):
-#     df = results[results['max_depth'] == max_depth]
-    
-#     g = sns.lineplot(x='n_lags',y='specificity_loss', hue='featureset', style='type', data=df)
-#     g.set( ylim=(0, 0.75), title='Max Depth: ' + str(max_depth), ylabel='Specificity Loss')
-#     plt.show()
-
-
-# ### Do prediction task
-
-# In[99]:
 
 
 # ----- Now predict using optimal number of lags for each horizon--- 
-# n_lags = 2
-# for t_feats in temporal_featuresets:    
-#     fs_lagged = t_feats.prep_for_modeling(n_lags)
-#     print(fs_lagged.df.columns)
-#     print(fs_lagged.df)
+for t_feats in temporal_featuresets:    
     
-#     # TODO: Set RF max-depth here after tuning lags - Done
-#     if t_feats.horizon == 'study_day':
-#         max_depth = 1
-#     else:
-#         max_depth = 5
-
-#     models.predict_from_mems(t_feats, n_lags, models={'XGB': None}, max_depth=max_depth)       
+    # TODO: Set RF max-depth here after tuning lags - Done
+    if t_feats.horizon == 'study_day':
+        n_lags = 6
+        max_depth = 2
+    else:
+        n_lags = 2
+        max_depth = 1
+        
+    fs_lagged = t_feats.prep_for_modeling(n_lags)
+    models.predict_from_mems(t_feats, n_lags, max_depth=max_depth)       
 
 
 # ## Study 2: Predict Adherence from Demographic and Med Record Data

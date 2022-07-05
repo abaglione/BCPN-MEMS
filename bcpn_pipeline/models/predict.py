@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 from imblearn.over_sampling import SMOTENC
@@ -215,13 +217,13 @@ def predict(fs, output_path, n_runs=5, select_feats=False,
                     
                     filename = f'{filename}_run_{run}_fold_{fold}'
 
-                    with open(f'{output_path}feats_{filename}.pkl', 'wb') as fp:
+                    with open(Path.joinpath(output_path, f'feats_{filename}.pkl'), 'wb') as fp:
                         pickle.dump(feats, fp)
 
-                    with open(f'{output_path}shap_explainer_{filename}.pkl', 'wb') as fp:
+                    with open(Path.joinpath(output_path, f'shap_explainer_{filename}.pkl'), 'wb') as fp:
                         pickle.dump(explainer, fp)
                         
-                    with open(f'{output_path}shap_values_{filename}.pkl', 'wb') as fp:
+                    with open(Path.joinpath(output_path, f'shap_values_{filename}.pkl'), 'wb') as fp:
                         pickle.dump(shap_values, fp)
 
                     fold += 1
@@ -264,7 +266,7 @@ def predict(fs, output_path, n_runs=5, select_feats=False,
         if tune:
             filename += '_tuned'
 
-        pd.concat(all_res).to_csv(f'{output_path}{filename}_pred.csv')
+        pd.concat(all_res).to_csv(Path.joinpath(output_path, f'{filename}_pred.csv'))
 
         # Calculate aggregate AUC and ROC
         test_roc_res, test_auc_res = metrics.get_mean_roc_auc(tprs, aucs, fpr_mean)
@@ -274,7 +276,6 @@ def predict(fs, output_path, n_runs=5, select_feats=False,
         test_roc_res.update(common_fields)
         test_auc_res.update(common_fields)
 
-        pd.DataFrame.from_dict(test_roc_res).to_csv(f'{output_path}{filename}_roc.csv')
-        pd.DataFrame([test_auc_res]).to_csv(f'{output_path}{filename}_auc.csv')
-
+        pd.DataFrame.from_dict(test_roc_res).to_csv(Path.joinpath(output_path, f'{filename}_roc.csv'))
+        pd.DataFrame([test_auc_res]).to_csv(Path.joinpath(output_path, f'{filename}_auc.csv'))
     
