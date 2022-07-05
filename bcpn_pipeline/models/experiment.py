@@ -65,6 +65,8 @@ def predict_from_mems(fs, n_lags, **kwargs):
 def gen_mixed_lm(fs, feats_explanatory, alpha=0.5, random_state=7):
 
     df = fs.df
+    df = df.loc[:, (df!=0).any(0)] # Drop columns with all 0's
+    feats_explanatory = [col for col in feats_explanatory if col in df.columns]
 
     # Do imputation
     imputer = IterativeImputer(random_state=random_state)
@@ -89,7 +91,7 @@ def gen_mixed_lm(fs, feats_explanatory, alpha=0.5, random_state=7):
                   )
 
     # Fit the model, penalizing the fixed effects
-    fit_res = lmm.fit_regularized(method='l1', alpha=alpha, disp=1)
+    fit_res = lmm.fit(method='lbfgs', alpha=alpha, disp=1, max_iter=50)
     
     # Create the predictive results DataFrame, storing important info such as the alpha and feature set name
     pred_res = pd.DataFrame({'explanatory_var': fit_res.params.index, 
@@ -101,7 +103,7 @@ def gen_mixed_lm(fs, feats_explanatory, alpha=0.5, random_state=7):
     pred_res.drop(columns=['index'], inplace=True)
     pred_res['feature_set'] = fs.horizon
     pred_res['alpha'] = alpha
-    pred_res['target'] = fs.target
+    pred_res['target'] = fs.target_col
 
     # Generate final predictions
     print('Making predictions...')
@@ -109,10 +111,10 @@ def gen_mixed_lm(fs, feats_explanatory, alpha=0.5, random_state=7):
         fit_res.predict(
             df[feats_explanatory]
         ), 
-        columns=['pred_'+ fs.target])
+        columns=[f'pred_{fs.target_col}'])
 
-    pred_df[fs.target] = df[fs.target]
-    pred_df['diff'] = pred_df['pred_'+ fs.target] - pred_df[fs.target]
+    pred_df[fs.target_col] = df[fs.target_col]
+    pred_df['diff'] = pred_df['pred_'+ fs.target_col] - pred_df[fs.target_col]
     pred_res['rmse'] = np.sqrt(np.sum(pred_df['diff']**2)/pred_df.shape[0])
 
     # Save outputs

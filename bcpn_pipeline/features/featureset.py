@@ -1,7 +1,9 @@
 import numpy as np
 import pandas as pd
 from itertools import compress
+
 from ..models.predict import predict
+from ..consts import TARGET_HORIZONS
 
 class Featureset:
     def __init__(self, df, name, id_col, nominal_cols=None, target_col=None, horizon=None, n_lags=None):
@@ -83,7 +85,11 @@ class Featureset:
     
     def handle_multicollinearity(self):
         print('Handling multicollinearity...')
-        corr_matrix = self.df.corr()
+        cols = [col for col in self.df.columns if col != self.id_col 
+                and col != self.target_col
+                and col not in TARGET_HORIZONS]
+        
+        corr_matrix = self.df[cols].corr()
 
         # --- Credit to Chris Albon ---
         # https://chrisalbon.com/code/machine_learning/feature_selection/drop_highly_correlated_features/
@@ -120,12 +126,9 @@ class Featureset:
         fs.prune_nominals()
 
         # Ensure target column is last
-        end_col = fs.df.pop(fs.target_col)
-        fs.df[fs.target_col] = end_col
-
-        # Finally, eliminate columns with 0 variance (all 0s)
-        print('Eliminating columns with 0 variance...')
-        fs.df = fs.df.loc[:, fs.df.any()]
+        if fs.target_col:
+            end_col = fs.df.pop(fs.target_col)
+            fs.df[fs.target_col] = end_col
 
         return fs
 
