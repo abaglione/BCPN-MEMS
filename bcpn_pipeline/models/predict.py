@@ -78,7 +78,7 @@ def train_test(X, y, id_col, clf, random_state, nominal_idx,
             X_train = X_train.iloc[:,selector.get_support()]
             X_test = X_test.iloc[:,selector.get_support()]
 
-        if method == 'LogisticR':
+        if method == 'LogisticR' or method == 'SVM':
             
             ''' Perform Scaling
                 Thank you @miriam-farber

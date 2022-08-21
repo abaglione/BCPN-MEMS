@@ -3,7 +3,7 @@
 
 # # Loading
 
-# In[ ]:
+# In[1]:
 
 
 # IO
@@ -16,6 +16,9 @@ import itertools
 # Data Processing
 import numpy as np
 import pandas as pd
+
+# Feature Engineering
+from statsmodels.stats.outliers_influence import variance_inflation_factor as vif
 
 # Predictive Analytics
 from sklearn.linear_model import LogisticRegression
@@ -31,11 +34,11 @@ import matplotlib.pyplot as plt
 plt.rcParams.update({'figure.autolayout': True})
 # plt.rcParams.update({'figure.facecolor': [1.0, 1.0, 1.0, 1.0]})
 
-# In[ ]:
+# In[2]:
 
 
 # Load the data
-datafile = Path("data/final_merged_set_v6.csv")
+datafile = Path.joinpath(consts.DATA_PATH, 'final_merged_set_v6.csv')
 df = pd.read_csv(datafile, parse_dates=False)
 df.head()
 
@@ -44,7 +47,7 @@ df.head()
 # Thank you to Jason Brownlee
 # https://machinelearningmastery.com/basic-data-cleaning-for-machine-learning/
 
-# In[ ]:
+# In[3]:
 
 
 # Instantiate a Dataset class
@@ -52,14 +55,14 @@ dataset = data.Dataset(df, id_col = 'PtID')
 dataset
 
 
-# In[ ]:
+# In[4]:
 
 
 # -------- Perform an initial cleaning of the dataset ----------
 dataset.clean(to_rename = {**consts.RENAMINGS['demographics'], 
                              **consts.RENAMINGS['medical']}, 
               to_drop=[col for col in dataset.df.columns if '_Name' in col] + 
-                      ['MemsNum', 'Monitor'],
+                      ['MemsNum', 'Monitor', 'pre_dx_date'],
               to_map = consts.CODEBOOK,
               to_binarize = ['race_other'],
               onehots_to_reverse = ['race_']
@@ -71,8 +74,15 @@ For now, naively assume we only have numerics, datetimes, or objects
 dtypes_dict = {
     'numeric': [col for col in dataset.df.columns if 'date' not in col.lower()],
     'datetime': ['DateEnroll'],
-    'categorical': list(consts.CODEBOOK.keys()) + ['race']
-}
+    'categorical': list(set(list(consts.CODEBOOK.keys()) + \
+                            ['race', 'education', 'birth_country',
+                               'marital_status', 'employment', 'income',
+                               'primary_language', 'race',
+                               'stage'
+                            ]
+                           )
+                       )
+    }
 
 dataset.set_dtypes(dtypes_dict)
 dataset.df.head()
@@ -84,7 +94,7 @@ dataset.df.head()
 
 # ### Organize candidate features
 
-# In[ ]:
+# In[5]:
 
 
 ''' 
@@ -102,7 +112,7 @@ feat_categories = {
 feat_categories
 
 
-# In[ ]:
+# In[6]:
 
 
 ''' This dataset has several repeated measures for validated instruments, 
@@ -142,7 +152,7 @@ for k,v in consts.SCORES.items():
         feat_categories['scores'] += [prefix + v['suffix']]
 
 
-# In[ ]:
+# In[7]:
 
 
 ''' Create a catch-all category of remaining features, to ensure we got everything '''
@@ -158,7 +168,7 @@ other_feats
 
 # ### Generate new features
 
-# In[ ]:
+# In[8]:
 
 
 ''' Create new columns for demographic and medical variables
@@ -172,53 +182,68 @@ feat_categories['demographics'] += [newcol]
 # Removed post-exam cols - DUH
 
 
+# In[9]:
+
+
+dataset.df.head()
+
+
 # ### Create featuresets
 
-# In[ ]:
+# In[10]:
 
 
 static_featuresets = list()
 
 '''Create two distinct featuresets - one with demographics + med record data,
    and one with scores '''
-fs_combos = [['demographics', 'medical'], ['scores']]
+fs_combos = [['demographics', 'medical'],['scores']]
 
 for combo in fs_combos:
     feat_cats_subset = {k:v for k,v in feat_categories.items() if k in combo}
     df = data.build_df_from_feature_categories(dataset.df, feat_cats_subset, dataset.id_col)
     
+    # Add DateEnroll back
+    df = df.merge(dataset.df[['PtID', 'DateEnroll']], on=['PtID'], how='left')
+
     ''' We have scores at baseline (0 months), mid-study (4 months) and post-study (8 months).
-        Here, we are going to reshape the data so dataframe is long-form, with three observations per subject
-        (at 0 months, 4 months, and 8 months, respectively).
+        Here, we are going to reshape the data so dataframe is long-form and retain the 0 and 4 month scores.
         
-        We are also going to create a column that indicates the time period(s) for which we want to
-        predict adherence. Per Navreet's documentation, surveys at the 4- and 8-month time points 
-        asked about experiences in the PAST. So, for the 0-month observations, we will predict 
-        some immediate future adherence value(s).But for the 4- and 8-month observations, we will 
-        predict some immediate PAST adherence value(s).
+        We are also going to set the time horizon column (e.g., study_day, study week) to be 
+        the date we want to predict adherence (the next immediate time step)
     '''
     if 'scores' in combo:
         dfs = []
         
         for prefix in consts.SCORE_PREFIXES:
             i = consts.SCORE_PREFIXES.index(prefix)
-            df2= df[['PtID'] + [col for col in df.columns if prefix in col]]
+            df2 = df[['PtID', 'DateEnroll'] + [col for col in df.columns if prefix in col]]
             df2.columns = df2.columns.str.replace(prefix, '')
-        
-            if i == 0:
-                df2['study_day'] = 0
-                df2['study_month'] = 0
-            elif i == 1: # Prefix B_, the 4-month surveys; predict into the past
-                df2['study_day'] = 119
-                df2['study_month'] = 3
-            else: # Prefix C_, the 8-month surveys; predict into the past
-                df2['study_day'] = 239
-                df2['study_month'] = 7
-            dfs.append(df2)
 
+            if i == 0:
+                df2['study_day'] = (df2['DateEnroll'] + np.timedelta64(1, 'M') - df2['DateEnroll']).dt.days + 1
+                df2['study_week'] = np.floor(
+                    (df2['DateEnroll'] + np.timedelta64(1, 'M') - df2['DateEnroll']).dt.days / consts.DAYS_IN_WEEK
+                )
+                df2['study_month'] = 1
+                dfs.append(df2)
+                
+            elif i == 1: # Prefix B_, the 4-month surveys
+                df2['study_day'] = (df2['DateEnroll'] + np.timedelta64(4, 'M') - df2['DateEnroll']).dt.days
+                df2['study_week'] = np.floor(
+                    (df2['DateEnroll'] + np.timedelta64(4, 'M') - df2['DateEnroll']).dt.days / consts.DAYS_IN_WEEK
+                )
+                df2['study_month'] = 5
+                dfs.append(df2)
+                
+#             else: # Prefix C_, the 8-month surveys; predict into the past
+#                 df2['study_day'] = 239
+#                 df2['study_month'] = 7  
+    
         df = pd.concat(dfs, axis=0, ignore_index=True)
+
         
-        ''' Remove participants who didn't complete all three questionnaires 
+        ''' Remove participants who didn't complete all questionnaires 
         Thank you Wes McKinney
         https://stackoverflow.com/questions/14016247/find-integer-index-of-rows-with-nan-in-pandas-dataframe
         '''
@@ -227,18 +252,47 @@ for combo in fs_combos:
         df = df.loc[~df['PtID'].isin(ptids_to_exclude)]
     
     else:
-        for horizon in consts.TARGET_HORIZONS:
-            df[horizon] = 0
+        df['study_day'] = (df['DateEnroll'] + np.timedelta64(1, 'M') - df['DateEnroll']).dt.days + 1
+        df['study_week'] = np.floor(
+            (df['DateEnroll'] + np.timedelta64(1, 'M') - df['DateEnroll']).dt.days / consts.DAYS_IN_WEEK
+        )
+        df['study_month'] = 1
+    
+    df.drop(columns=['DateEnroll'], inplace=True)
     static_featuresets.append(features.Featureset(df=df, name=' + '.join(combo), id_col = dataset.id_col))
         
 static_featuresets
+
+
+# In[11]:
+
+
+# df_dem_med = static_featuresets[0].df.drop(columns=consts.TARGET_HORIZONS) # Use prediction horizons from df_scores
+# df_scores = static_featuresets[1].df
+
+# df_combined = df_dem_med.merge(df_scores, on=['PtID'], how='outer')
+# df_combined
+
+
+# In[12]:
+
+
+# static_featuresets = [
+#     features.Featureset(
+#         df=df_combined, 
+#         name=' + '.join([fs.name for fs in static_featuresets]), 
+#         id_col = dataset.id_col,
+#         nominal_cols = [col for col in df_dem_med.columns if col != dataset.id_col]
+#     )
+# ]
+# static_featuresets
 
 
 # ## Dynamic (Temporal) Features
 
 # Extract temporal features by converting main dataset's df from wide-form to long-form.
 
-# In[ ]:
+# In[13]:
 
 
 rows = []
@@ -321,7 +375,7 @@ horizons_df = horizons_df.loc[horizons_df['DateEnroll'] < horizons_df['date']]
 
 # ### Generate new features
 
-# In[ ]:
+# In[14]:
 
 
 # Add binary indicator of any usage (not just number of times used) on a given day
@@ -334,11 +388,13 @@ horizons_df['used_today'] = horizons_df['num_times_used_today'].apply(
 ''' 
 horizons_df = features.get_temporal_feats(df=horizons_df, start_date_col='DateEnroll', 
                                           id_col='PtID', time_of_day_props=consts.TIME_OF_DAY_PROPS)
-horizons_df[horizons_df['study_month'] == 1]
-horizons_df
+
+# washout period of 1 month, per Kristi's recommendation
+horizons_df = horizons_df[horizons_df['study_month'] > 0].reset_index(drop=True)
+horizons_df['study_month'].min() # verify
 
 
-# In[ ]:
+# In[15]:
 
 
 ''' Quick fix for duplicates that are introduced...
@@ -349,13 +405,13 @@ horizons_df.drop(df.index, axis=0, inplace=True)
 horizons_df
 
 
-# In[ ]:
+# In[16]:
 
 
 horizons_df.select_dtypes('category')
 
 
-# In[ ]:
+# In[17]:
 
 
 def get_col_mode(x):
@@ -462,29 +518,126 @@ for horizon in consts.TARGET_HORIZONS:
                                                     nominal_cols = nominal_cols))
 
 
-# In[ ]:
+# In[18]:
 
 
 # Sanity check
-temporal_featuresets[1].df.select_dtypes('category')
+temporal_featuresets[0].df.select_dtypes('category')
 
 
-# In[ ]:
+# In[19]:
 
 
 temporal_featuresets[1].nominal_cols
 
 
+# ### Examine Collinearity and Variance Inflation Factor
+
+# In[20]:
+
+
+# Study Day
+df = temporal_featuresets[0].df
+df.corr()
+
+
+# In[21]:
+
+
+df2 = df.select_dtypes('number')
+vif_data = pd.DataFrame()
+vif_data["feature"] = df2.columns
+vif_data["VIF"]  = [vif(df2.values, i) for i in range(len(df2.columns))]
+vif_data
+
+
+# In[22]:
+
+
+# Drop n_events to see if we improve
+df2 = df.select_dtypes('number').drop(columns=['n_events'])
+vif_data = pd.DataFrame()
+vif_data["feature"] = df2.columns
+vif_data["VIF"]  = [vif(df2.values, i) for i in range(len(df2.columns))]
+vif_data
+
+# Yep - looks much better
+
+
+# In[23]:
+
+
+# Drop in the actual featureset and verify it's been dropped
+temporal_featuresets[0].df.drop(columns=['n_events'], inplace=True)
+print(temporal_featuresets[0].df.columns)
+temporal_featuresets[0]
+
+
+# In[24]:
+
+
+# Study Week
+df = temporal_featuresets[1].df
+df.corr()
+
+
+# In[25]:
+
+
+df2 = df.select_dtypes('number')
+vif_data = pd.DataFrame()
+vif_data["feature"] = df2.columns
+vif_data["VIF"]  = [vif(df2.values, i) for i in range(len(df2.columns))]
+vif_data
+
+
+# In[26]:
+
+
+# Drop n_events, n_daily_events mean, and between event time mean to see if we improve
+df2 = df.select_dtypes('number').drop(columns=['n_events', 'between_event_time_mean', 'num_daily_events_mean'])
+vif_data = pd.DataFrame()
+vif_data["feature"] = df2.columns
+vif_data["VIF"]  = [vif(df2.values, i) for i in range(len(df2.columns))]
+vif_data
+
+# Yep - looks much better
+
+
+# In[27]:
+
+
+# Drop in the actual featureset and verify it's been dropped
+temporal_featuresets[1].df.drop(columns=['n_events', 'between_event_time_mean', 'num_daily_events_mean'], inplace=True)
+print(temporal_featuresets[1].df.columns)
+temporal_featuresets[1]
+
+
+# In[28]:
+
+
+for fs in temporal_featuresets:
+    print(fs.name)
+    for col in fs.df.columns:
+        if col != fs.id_col:
+            try:
+                plt.hist(fs.df[col])
+                plt.title(col)
+                plt.show()
+            except:
+                pass
+
+
 # # Prediction
 
-# In[ ]:
+# In[29]:
 
 
 # Sanity check - this column should NOT be in the final set
 # static_featuresets[0].df['total_days_8']
 
 
-# In[ ]:
+# In[30]:
 
 
 target_col = 'adherent'
@@ -513,33 +666,160 @@ for t_feats in temporal_featuresets:
     t_feats.nominal_cols += [target_col]
 
 
+# ## Study 1: Predict Adherence from Demographic and Med Record Data
+
+# In[31]:
+
+
+# Not feasible for surveys at current timescale (i.e., not taken at the same timescale as the temporal data)
+
+# combined_featuresets = []
+
+# for fs_temporal, fs_static in [(fs_temporal, fs_static) for fs_temporal in temporal_featuresets for fs_static in static_featuresets]:
+    
+#     df_static = fs_static.df.copy()
+#     df_static.drop(columns=[col for col in df_static.columns if 'study_' in col and col != fs_temporal.horizon], inplace=True)
+#     cols_expl_og = [col for col in df_static if col != fs_static.id_col and col != fs_temporal.horizon]
+    
+#     df_combined = df_static.merge(fs_temporal.df, on=[fs_temporal.id_col, fs_temporal.horizon], how='left')
+#     df_combined.dropna(subset=['adherent'], how='any', inplace=True)
+#     df_combined.reset_index(drop=True, inplace=True)
+    
+#     fs = features.Featureset(
+#             df=df_combined, 
+#             name=' + '.join([fs_static.name, fs_temporal.name]), 
+#             id_col = dataset.id_col,
+#             nominal_cols = fs_static.nominal_cols + fs_temporal.nominal_cols,
+#             target_col=fs_temporal.target_col
+#             horizon=fs_temporal.horizon
+#             )
+    
+#     # One hot encode, etc
+#     fs.prep_for_modeling() # May need to reduce collinearity
+    
+#     # Create list of explanatory features
+#     to_exclude = list(fs_temporal.df.columns) 
+#     to_exclude.extend(
+#         [col for col in list(fs.df.columns)
+#          if any(
+#              [cat for cat in list(fs_temporal.df.select_dtypes('category').columns) if cat in col]
+#          )
+#         ]
+#     )
+
+#     cols_expl = list(set(fs.df.columns) - set(to_exclude))
+    
+#     # Add combined featureset to list
+#     combined_featuresets.append(
+#         {'fs': fs,
+#          'feats_explanatory': [col for col in cols_expl 
+#                                if col in fs.df.columns 
+#                                and col != fs.id_col 
+#                                and col != fs.horizon]
+#         }
+#     )
+
+# combined_featuresets
+
+
+# ## Study 2: Predict Adherence from MEMS Data Only
+
+# ### Tune number of lags
+
+# In[32]:
+
+
+''' Test the model performance for a range of lags (number of previous inputs)
+      and range of max_depths (since training with RF by default)
+    max_depth exploration will help ensure we aren't overfitting.
+'''
+# for t_feats in temporal_featuresets:
+#     models.tune_lags(t_feats)
+
+
+# In[33]:
+
+
+# results = []
+# for f in consts.OUTPUT_PATH_LAGS.glob('*_pred.csv'):
+#     df = pd.read_csv(f)
+#     results.append(df)
+# results = pd.concat(results, axis=0).reset_index(drop=True)
+# results.drop(columns=['Unnamed: 0'], inplace=True)
+# results
+
+
+# In[34]:
+
+
+# for col in ['n_lags', 'accuracy', 'max_depth']:
+#     results[col] = pd.to_numeric(results[col])
+# results
+
+
+# In[35]:
+
+
+# results['specificity_loss'] = 1-results['specificity']
+# results
+
+
+# In[36]:
+
+
+# '''
+# Takeaways:
+
+# - study_day: 4 lags with max_depth 2 best for study_day - some overfitting, but not dramatic. 
+# Overfitting worsens beyond this.
+
+# - study_week: 4 lags with shallow tree (max_depth=1) best for study week. 
+# Overfitting worsens after that, with no major gain in performance
+# '''
+
+# for max_depth in range(1, 6):
+#     df = results[results['max_depth'] == max_depth]
+    
+#     g = sns.lineplot(x='n_lags',y='specificity', hue='featureset', style='type', data=df)
+#     g.set( ylim=(0.5, 0.8), title='Max Depth: ' + str(max_depth), ylabel='Specificity')
+#     plt.show()
+    
+# for max_depth in range(1, 6):
+#     df = results[results['max_depth'] == max_depth]
+    
+#     g = sns.lineplot(x='n_lags',y='specificity_loss', hue='featureset', style='type', data=df)
+#     g.set( ylim=(0, 0.5), title='Max Depth: ' + str(max_depth), ylabel='Specificity Loss')
+#     plt.show()
+
+
+# ### Do prediction task
+
 # In[ ]:
 
 
-temporal_featuresets[1].df
-
-
-
-
-# ----- Now predict using optimal number of lags for each horizon--- 
+# # ----- Now predict using optimal number of lags for each horizon--- 
 for t_feats in temporal_featuresets:    
     
     # TODO: Set RF max-depth here after tuning lags - Done
     if t_feats.horizon == 'study_day':
-        n_lags = 6
+        n_lags = 4
         max_depth = 2
     else:
-        n_lags = 2
+        n_lags = 4
         max_depth = 1
         
     fs_lagged = t_feats.prep_for_modeling(n_lags)
-    models.predict_from_mems(t_feats, n_lags, max_depth=max_depth)       
+    models.predict_from_mems(t_feats, n_lags, max_depth=max_depth, models={'SVM': None})             
 
-
-# ## Study 2: Predict Adherence from Demographic and Med Record Data
 
 # In[ ]:
 
 
-# TODO - build LSTM, following Esteban et al's approach
+# static_featuresets[1].df
+
+
+# In[ ]:
+
+
+
 
