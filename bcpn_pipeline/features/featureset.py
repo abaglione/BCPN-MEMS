@@ -199,6 +199,7 @@ def series_to_supervised(df, time_col, target_col, n_in=1, n_out=1, dropnan=True
              inplace=True)
     
     # drop the (t) suffix in the target column
+    # TODO - this won't work if we are predicting more than one time step
     agg.rename(columns = {target_col+' (t)': target_col}, inplace=True)
     return agg
 

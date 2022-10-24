@@ -2,7 +2,7 @@ from pathlib import Path
 
 DATA_PATH = Path('data/')
 
-OUTPUT_PATH_PRIMARY = Path('results/')
+OUTPUT_PATH_PRIMARY = Path('results/washout')
 OUTPUT_PATH_LAGS = Path.joinpath(OUTPUT_PATH_PRIMARY, 'tuned_lags/')
 OUTPUT_PATH_PRED = Path.joinpath(OUTPUT_PATH_PRIMARY, 'prediction_task/')
 OUTPUT_PATH_LMM = Path.joinpath(OUTPUT_PATH_PRIMARY, 'lmm_task/')
@@ -134,6 +134,16 @@ CODEBOOK = {
         2: 'Spanish',
         3: 'Portuguese', 
         4: 'Other'
+    },
+    'stage': {
+        0: 'Stage 0',
+        1: 'Stage Ia',
+        2: 'Stage Ib',
+        3: 'Stage IIa',
+        4: 'Stage IIb',
+        5: 'Stage IIIa',
+        6: 'Stage IIIb',
+        7: 'Stage IIIc'
     }
 }
 
