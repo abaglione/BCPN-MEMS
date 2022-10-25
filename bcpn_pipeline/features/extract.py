@@ -127,20 +127,6 @@ def calc_standard_temporal_metrics(df, groupby_cols, datetime_col):
     # TODO: Move to consts
     SECONDS_IN_HOUR = 3600.0
     
-    # res = df.groupby(groupby_cols)[datetime_col].agg({
-    #     'event_time_mean': lambda x: np.floor(
-    #         x.dt.hour.mean()
-    #     ),
-    #     'event_time_std': lambda x: np.floor(
-    #         x.dt.hour.std()
-    #     ),
-    #     'between_event_time_mean': lambda x: np.floor(
-    #         abs(x.diff().mean().total_seconds() / SECONDS_IN_HOUR)
-    #     ),
-    #     'between_event_time_std': lambda x: np.floor(
-    #         x.diff().std().total_seconds() / SECONDS_IN_HOUR
-    #     )
-    # }).reset_index()
     res = df.groupby(groupby_cols).agg(
         event_time_mean=(
             datetime_col, 

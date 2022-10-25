@@ -440,7 +440,7 @@ for horizon in consts.TARGET_HORIZONS:
     ).reset_index()
     
     if horizon == 'study_day':
-        cols = ['is_weekday', 'day_of_week']
+        cols = ['is_weekday']
         df2 = horizons_df[groupby_cols + cols]
         df = df.merge(df2, on=groupby_cols, how='outer')
         
