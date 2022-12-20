@@ -4,7 +4,7 @@ The code contained in this repository was used for my Ph.D. thesis work on predi
 
 Data were collected by Dr. Kristen Wells and colleagues and were used with permission.
 
-This README template was adapted with permission from one of [@TylerSpears](https://github.com/TylerSpears/)' templates.
+This README template was adapted with permission from one of [TylerSpears](https://github.com/TylerSpears/)' templates.
 
 ## Installation
 ### Required Packages
