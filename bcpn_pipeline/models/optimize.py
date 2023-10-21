@@ -71,7 +71,7 @@ def tune_hyperparams(X, y, groups, method, random_state):
     # TODO - explicitly set checkpoints dir here to solve issue
     tune_search = TuneGridSearchCV(estimator=model, param_grid=param_grid,
                                    cv=cv, scoring=scorer,  n_jobs=n_jobs,
-                                   verbose=2)
+                                   verbose=2, local_dir='/mnt/c/Users/anbag/ray_results')
 
     tune_search.fit(X.values, y.values, groups)
     return tune_search.best_estimator_

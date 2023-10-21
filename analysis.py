@@ -34,6 +34,7 @@ import matplotlib.pyplot as plt
 plt.rcParams.update({'figure.autolayout': True})
 # plt.rcParams.update({'figure.facecolor': [1.0, 1.0, 1.0, 1.0]})
 
+
 # In[ ]:
 
 
@@ -224,6 +225,7 @@ len(navigation_ids)
 
 
 navigation = adherence[adherence['PtID'].isin(navigation_ids)]
+display(navigation.shape[0])
 print(f"{round(navigation['adherent'].mean() * 100, 2)}% of participants who received patient navigation were adherent across the whole study.")
 
 
@@ -231,6 +233,7 @@ print(f"{round(navigation['adherent'].mean() * 100, 2)}% of participants who rec
 
 
 no_navigation = adherence[~adherence['PtID'].isin(navigation_ids)]
+display(no_navigation.shape[0])
 print(f"{round(no_navigation['adherent'].mean() * 100, 2)}% of participants who did not receive patient navigation were adherent across the whole study.")
 
 
@@ -269,7 +272,7 @@ horizons_df
 # In[ ]:
 
 
-horizons_df.select_dtypes('category')
+horizons_df
 
 
 # In[ ]:
@@ -300,22 +303,27 @@ for horizon in consts.TARGET_HORIZONS:
         n_events=('num_times_used_today', 'sum')
     ).reset_index()
     
+    
     if horizon == 'study_day':
         cols = ['is_weekday', 'day_of_week']
         df2 = horizons_df[groupby_cols + cols]
-        df = df.merge(df2, on=groupby_cols, how='outer')
+        df = df.merge(df2, on=groupby_cols, how='inner')
+        display(df)
         
         # Add columns indicating if the MEMS cap was used during a given time(s) of day
         # Basically a manual one-hot encoding while we're here
         col = 'time_of_day'
         df2 = horizons_df.groupby(groupby_cols)[col].value_counts().reset_index(name='count')
         df2.rename(columns={'level_2': col}, inplace=True)
-
+        display(df2)
+        
         df2 = df2.pivot_table(
             columns=col, index=['PtID', 'study_day'], values='count'
         ).reset_index().rename_axis(None, axis=1)
+        display(df2)
         
-        df = df.merge(df2, on=groupby_cols, how='outer')
+        df = df.merge(df2, on=groupby_cols, how='inner')
+        display(df)
 
         for col in consts.TIME_OF_DAY_PROPS['labels']:
             df[col] = pd.to_numeric(df[col].fillna(0).apply(lambda x: 1 if x > 0 else x))
@@ -335,7 +343,7 @@ for horizon in consts.TARGET_HORIZONS:
         
         # Get standard temporal metrics
         df2 = features.calc_standard_temporal_metrics(horizons_df, groupby_cols, 'datetime')
-        df = df.merge(df2, on=groupby_cols, how='outer')
+        df = df.merge(df2, on=groupby_cols, how='inner')
 
         # Calculate avg and standard deviation of number of times used
         df2 = horizons_df.groupby(groupby_cols + ['study_day'])['num_times_used_today'].max().reset_index()
@@ -343,14 +351,15 @@ for horizon in consts.TARGET_HORIZONS:
             num_daily_events_mean=('num_times_used_today', lambda x: x.sum() / denom)
         ).reset_index()
 
-        df = df.merge(df2, on=groupby_cols, how='outer')
+        df = df.merge(df2, on=groupby_cols, how='inner')
 
         # Get most common time of day of event occurence
         df2 = horizons_df.groupby(groupby_cols).agg(
             event_time_of_day_mode=('time_of_day', get_col_mode)
         ).reset_index()
 
-        df = df.merge(df2, on=groupby_cols, how='outer')
+        df = df.merge(df2, on=groupby_cols, how='inner')
+        display(df)
         
         # Explicitly set dtype so we can later select and one-hot encode
         df['event_time_of_day_mode'] = df['event_time_of_day_mode'].astype('category') 
@@ -366,7 +375,7 @@ for horizon in consts.TARGET_HORIZONS:
             adherence_rate=('withinrange', lambda x: x.sum() / denom)
         ).reset_index()
     
-    df = df.merge(df2, on=groupby_cols, how='outer')
+    df = df.merge(df2, on=groupby_cols, how='inner')
     
     # Help pandas since it doesn't process datetimes well and introduces duplicate entries on merges
     df = df.drop_duplicates(subset=groupby_cols)
@@ -389,6 +398,12 @@ temporal_featuresets[0].df.select_dtypes('category')
 # In[ ]:
 
 
+temporal_featuresets[0].df.iloc[-1]
+
+
+# In[ ]:
+
+
 temporal_featuresets[1].nominal_cols
 
 
@@ -398,29 +413,29 @@ temporal_featuresets[1].nominal_cols
 
 
 # Study Day
-# df = temporal_featuresets[0].df
-# df.corr()
+df = temporal_featuresets[0].df
+df.select_dtypes('number').corr()
 
 
 # In[ ]:
 
 
-# df2 = df.select_dtypes('number')
-# vif_data = pd.DataFrame()
-# vif_data["feature"] = df2.columns
-# vif_data["VIF"]  = [vif(df2.values, i) for i in range(len(df2.columns))]
-# vif_data
+df2 = df.select_dtypes('number').drop(columns=['PtID', 'adherence_rate'])
+vif_data = pd.DataFrame()
+vif_data["feature"] = df2.columns
+vif_data["VIF"]  = [vif(df2.values, i) for i in range(len(df2.columns))]
+vif_data
 
 
 # In[ ]:
 
 
-# Drop n_events to see if we improve
-# df2 = df.select_dtypes('number').drop(columns=['n_events'])
-# vif_data = pd.DataFrame()
-# vif_data["feature"] = df2.columns
-# vif_data["VIF"]  = [vif(df2.values, i) for i in range(len(df2.columns))]
-# vif_data
+# Drop a few to see if we improve
+df2 = df.select_dtypes('number').drop(columns=['PtID', 'adherence_rate', 'n_events'])
+vif_data = pd.DataFrame()
+vif_data["feature"] = df2.columns
+vif_data["VIF"]  = [vif(df2.values, i) for i in range(len(df2.columns))]
+vif_data
 
 # Yep - looks much better
 
@@ -438,29 +453,29 @@ temporal_featuresets[0]
 
 
 # Study Week
-# df = temporal_featuresets[1].df
-# df.corr()
+df = temporal_featuresets[1].df.select_dtypes('number')
+df.corr()
 
 
 # In[ ]:
 
 
-# df2 = df.select_dtypes('number')
-# vif_data = pd.DataFrame()
-# vif_data["feature"] = df2.columns
-# vif_data["VIF"]  = [vif(df2.values, i) for i in range(len(df2.columns))]
-# vif_data
+df2 = df.select_dtypes('number').drop(columns=['PtID', 'adherence_rate'])
+vif_data = pd.DataFrame()
+vif_data["feature"] = df2.columns
+vif_data["VIF"]  = [vif(df2.values, i) for i in range(len(df2.columns))]
+vif_data
 
 
 # In[ ]:
 
 
 # Drop n_events, n_daily_events mean, and between event time mean to see if we improve
-# df2 = df.select_dtypes('number').drop(columns=['n_events', 'between_event_time_mean', 'num_daily_events_mean'])
-# vif_data = pd.DataFrame()
-# vif_data["feature"] = df2.columns
-# vif_data["VIF"]  = [vif(df2.values, i) for i in range(len(df2.columns))]
-# vif_data
+df2 = df.select_dtypes('number').drop(columns=['n_events', 'between_event_time_mean', 'num_daily_events_mean', 'PtID', 'adherence_rate'])
+vif_data = pd.DataFrame()
+vif_data["feature"] = df2.columns
+vif_data["VIF"]  = [vif(df2.values, i) for i in range(len(df2.columns))]
+vif_data
 
 # Yep - looks much better
 
@@ -477,16 +492,16 @@ temporal_featuresets[1]
 # In[ ]:
 
 
-# for fs in temporal_featuresets:
-#     print(fs.name)
-#     for col in fs.df.columns:
-#         if col != fs.id_col:
-#             try:
-#                 plt.hist(fs.df[col])
-#                 plt.title(col)
-#                 plt.show()
-#             except:
-#                 pass
+for fs in temporal_featuresets:
+    print(fs.name)
+    for col in fs.df.columns:
+        if col != fs.id_col:
+            try:
+                plt.hist(fs.df[col])
+                plt.title(col)
+                plt.show()
+            except:
+                pass
 
 
 # # Prediction
@@ -527,75 +542,19 @@ for t_feats in temporal_featuresets:
     t_feats.nominal_cols += [target_col]
 
 
-# ## Study 1: Predict Adherence from Demographic and Med Record Data
-
-# In[ ]:
-
-
-# Not feasible for surveys at current timescale (i.e., not taken at the same timescale as the temporal data)
-
-# combined_featuresets = []
-
-# for fs_temporal, fs_static in [(fs_temporal, fs_static) for fs_temporal in temporal_featuresets for fs_static in static_featuresets]:
-    
-#     df_static = fs_static.df.copy()
-#     df_static.drop(columns=[col for col in df_static.columns if 'study_' in col and col != fs_temporal.horizon], inplace=True)
-#     cols_expl_og = [col for col in df_static if col != fs_static.id_col and col != fs_temporal.horizon]
-    
-#     df_combined = df_static.merge(fs_temporal.df, on=[fs_temporal.id_col, fs_temporal.horizon], how='left')
-#     df_combined.dropna(subset=['adherent'], how='any', inplace=True)
-#     df_combined.reset_index(drop=True, inplace=True)
-    
-#     fs = features.Featureset(
-#             df=df_combined, 
-#             name=' + '.join([fs_static.name, fs_temporal.name]), 
-#             id_col = dataset.id_col,
-#             nominal_cols = fs_static.nominal_cols + fs_temporal.nominal_cols,
-#             target_col=fs_temporal.target_col
-#             horizon=fs_temporal.horizon
-#             )
-    
-#     # One hot encode, etc
-#     fs.prep_for_modeling() # May need to reduce collinearity
-    
-#     # Create list of explanatory features
-#     to_exclude = list(fs_temporal.df.columns) 
-#     to_exclude.extend(
-#         [col for col in list(fs.df.columns)
-#          if any(
-#              [cat for cat in list(fs_temporal.df.select_dtypes('category').columns) if cat in col]
-#          )
-#         ]
-#     )
-
-#     cols_expl = list(set(fs.df.columns) - set(to_exclude))
-    
-#     # Add combined featureset to list
-#     combined_featuresets.append(
-#         {'fs': fs,
-#          'feats_explanatory': [col for col in cols_expl 
-#                                if col in fs.df.columns 
-#                                and col != fs.id_col 
-#                                and col != fs.horizon]
-#         }
-#     )
-
-# combined_featuresets
-
-
-# ## Study 2: Predict Adherence from MEMS Data Only
+# ## Study: Predict Adherence from MEMS Data Only
 
 # ### Tune number of lags
 
 # In[ ]:
 
 
-# ''' Test the model performance for a range of lags (number of previous inputs)
-#       and range of max_depths (since training with RF by default)
-#     max_depth exploration will help ensure we aren't overfitting.
-# '''
-# for t_feats in temporal_featuresets:
-#     models.tune_lags(t_feats)
+''' Test the model performance for a range of lags (number of previous inputs)
+      and range of max_depths (since training with RF by default)
+    max_depth exploration will help ensure we aren't overfitting.
+'''
+for t_feats in temporal_featuresets:
+    models.tune_lags(t_feats)
 
 
 # In[ ]:
@@ -690,18 +649,18 @@ for t_feats in temporal_featuresets:
 # In[ ]:
 
 
-# # ----- Now predict using optimal number of lags for each horizon--- 
-for t_feats in temporal_featuresets:    
+# # # ----- Now predict using optimal number of lags for each horizon--- 
+# for t_feats in temporal_featuresets:    
     
-    ''' These max_depth are for the default (baseline) classifiers only.
-    Useful for benchmarking studies.'''
-    if t_feats.horizon == 'study_day':
-        n_lags = 4
-        max_depth = 2
-    else: # study week
-        n_lags = 4
-        max_depth = 1
+#     ''' These max_depth are for the default (baseline) classifiers only.
+#     Useful for benchmarking studies.'''
+#     if t_feats.horizon == 'study_day':
+#         n_lags = 4
+#         max_depth = 2
+#     else: # study week
+#         n_lags = 4
+#         max_depth = 1
         
-    fs_lagged = t_feats.prep_for_modeling(n_lags)
-    models.predict_from_mems(fs_lagged, tune=True, select_feats=False, max_depth=max_depth)       
+#     fs_lagged = t_feats.prep_for_modeling(n_lags)
+#     models.predict_from_mems(fs_lagged, max_depth=max_depth)       
 
