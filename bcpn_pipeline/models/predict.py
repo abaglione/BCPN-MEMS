@@ -147,7 +147,8 @@ def cross_validate(X, y, id_col, clf, random_state, nominal_idx, method, select_
                             tune=tune, importance=False)
 
         for k, v in res.items():
-            res_all[k].append(v)
+            if k in res_all.keys():
+                res_all[k].append(v)
 
     train_res = pd.concat(res_all.pop('train_res'), copy=True)
     test_res = pd.concat(res_all.pop('test_res'), copy=True)

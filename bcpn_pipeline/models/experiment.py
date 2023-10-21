@@ -51,7 +51,7 @@ def tune_lags(fs):
 
             # Pass in max_depth so it gets recorded...dont' ask me why I designed it this way.
             predict_from_mems(fs=all_feats, tune=False, output_path=OUTPUT_PATH_LAGS,
-                              select_feats=False, importance=False, repeated_cv=False, **kwargs)
+                              select_feats=False, importance=False, repeated_cv=True, **kwargs)
 
 
 def get_default_clf(method, common_fields, max_depth, random_state):
@@ -169,6 +169,9 @@ def predict_from_mems(fs, tune, select_feats, output_path=OUTPUT_PATH_PRED, impo
         res['df_roc'].to_csv(
             Path.joinpath(output_path, f'{filename}_roc.csv'))
 
+        if not importance:
+            continue
+        
         (feats, explainer, shap_values) = res['shap_tuple']
 
         with open(Path.joinpath(output_path, f'feats_{filename}.pkl'), 'wb') as fp:
