@@ -652,5 +652,6 @@ for t_feats in temporal_featuresets:
     Useful for benchmarking studies.'''
 
     fs_lagged = t_feats.prep_for_modeling(n_lags=3)
-    models.predict_from_mems(fs_lagged, max_depth=2)       
+    kwargs = {'max_depth': 2}
+    models.predict_from_mems(fs_lagged, tune=True, select_feats=True, **kwargs)       
 
