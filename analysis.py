@@ -703,5 +703,5 @@ for t_feats in temporal_featuresets:
         max_depth = 1
         
     fs_lagged = t_feats.prep_for_modeling(n_lags)
-    models.predict_from_mems(t_feats, n_lags, max_depth=max_depth)       
+    models.predict_from_mems(fs_lagged, tune=True, select_feats=False, max_depth=max_depth)       
 

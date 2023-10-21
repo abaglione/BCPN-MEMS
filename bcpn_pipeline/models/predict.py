@@ -105,14 +105,15 @@ def train_test(X_train, y_train, X_test, y_test, id_col, clf, random_state, nomi
     train_res = pd.DataFrame({'y_pred': y_train_pred, 'y_true': y_train})
     test_res = pd.DataFrame({'y_pred': y_test_pred, 'y_true': y_test})
 
+    res = {'train_res': train_res, 'test_res': test_res, 
+            'auc': roc_auc, 'tpr': tpr}
     if importance:
         feats = list(X_test.columns)
         explainer, shap_values = calc_shap(
             X_train, X_test, clf, method, random_state)
-        shap_tuple = (feats, explainer, shap_values)
+        res['shap_tuple'] = (feats, explainer, shap_values)
 
-    return {'train_res': train_res, 'test_res': test_res, 
-            'auc': roc_auc, 'tpr': tpr, 'shap_tuple': shap_tuple}
+    return res
 
 
 def cross_validate(X, y, id_col, clf, random_state, nominal_idx, method, select_feats,
@@ -167,39 +168,8 @@ def cross_validate(X, y, id_col, clf, random_state, nominal_idx, method, select_
     return res_all
 
 
-
-def get_default_clf(method, common_fields, max_depth, random_state):
-
-    # Chose to initialize methods here so that random_state could be controlled by the run number
-    if method == 'RF' or method == 'XGB':
-        common_fields.update({'max_depth': max_depth})
-
-        if method == 'RF':
-            clf = RandomForestClassifier(
-                max_depth=max_depth, random_state=random_state)
-        else:
-            clf = XGBClassifier(
-                max_depth=max_depth,
-                objective='binary:logistic',
-                eval_metric='logloss',
-                use_label_encoder=False,
-                random_state=random_state
-            )
-    else:
-        common_fields.update({'max_depth': 'NA'})
-
-        if method == 'LogisticR':
-            clf = LogisticRegression(
-                solver='liblinear', random_state=random_state)
-
-        elif method == 'SVM':
-            clf = SVC(probability=True, random_state=random_state)
-
-    return clf, common_fields
-
-
 def repeated_cross_validation(X, y, id_col, clf, nominal_idx, method, select_feats, tune,
-                              max_depth, output_path, filename,
+                              common_fields, output_path, filename,
                               run_repeats=5):
     
     tpr = []  # Array of true positive rates
@@ -213,16 +183,13 @@ def repeated_cross_validation(X, y, id_col, clf, nominal_idx, method, select_fea
                 (run + 1, run_repeats, method))
         random_state = run
 
-        if clf is None:
-            clf, common_fields = get_default_clf(method, common_fields, max_depth, random_state)
-
         res = cross_validate(X, y, id_col, clf, random_state, nominal_idx, method, 
                             select_feats, tune)
 
         # Get train and test results as separate dictionaries
         for d in [res['train_perf_metrics'], res['test_perf_metrics']]:
             d.update({'method': method, 'run': run, 'random_state': random_state,
-                        'n_features': X.shape[1], 'n_samples': X.shape[0]})
+                      'n_features': X.shape[1], 'n_samples': X.shape[0]})
             d.update(common_fields)
             all_res.append(pd.DataFrame([d]))
 

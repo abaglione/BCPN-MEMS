@@ -1,5 +1,9 @@
 import pickle
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.svm import SVC
+from sklearn.metrics import roc_curve, auc
+from xgboost import XGBClassifier
 import pandas as pd
 from ..consts import OUTPUT_PATH_LAGS, OUTPUT_PATH_PRED, OUTPUT_PATH_LMM
 from .predict import repeated_cross_validation, train_test
@@ -49,6 +53,35 @@ def tune_lags(fs):
                               select_feats=False, **kwargs)
 
 
+def get_default_clf(method, common_fields, max_depth, random_state):
+
+    # Chose to initialize methods here so that random_state could be controlled by the run number
+    if method == 'RF' or method == 'XGB':
+        common_fields.update({'max_depth': max_depth})
+
+        if method == 'RF':
+            clf = RandomForestClassifier(
+                max_depth=max_depth, random_state=random_state)
+        else:
+            clf = XGBClassifier(
+                max_depth=max_depth,
+                objective='binary:logistic',
+                eval_metric='logloss',
+                use_label_encoder=False,
+                random_state=random_state
+            )
+    else:
+        common_fields.update({'max_depth': 'NA'})
+
+        if method == 'LogisticR':
+            clf = LogisticRegression(
+                solver='liblinear', random_state=random_state)
+
+        elif method == 'SVM':
+            clf = SVC(probability=True, random_state=random_state)
+
+    return clf, common_fields
+
 def predict_from_mems(fs, tune, select_feats, output_path=OUTPUT_PATH_PRED, **kwargs):
 
     common_fields = {'n_lags': fs.n_lags, 'featureset': fs.name, 'features_selected': select_feats,
@@ -69,6 +102,9 @@ def predict_from_mems(fs, tune, select_feats, output_path=OUTPUT_PATH_PRED, **kw
         ['LogisticR', 'RF', 'XGB', 'SVM']) if not models else models
 
     for method, clf in models.items():
+        if clf is None:
+            clf, common_fields = get_default_clf(method, common_fields, max_depth, 42)
+
 
         # Split into inputs and labels
         X = fs.df.drop(columns=[fs.target_col])
@@ -87,10 +123,10 @@ def predict_from_mems(fs, tune, select_feats, output_path=OUTPUT_PATH_PRED, **kw
         if tune:
             filename += '_tuned'
 
-        # repeated_cross_validation(X, y, fs.id_col, clf, nominal_idx,
-        #                           method, select_feats, tune, max_depth, output_path, filename)
+        repeated_cross_validation(X, y, fs.id_col, clf, nominal_idx,
+                                  method, select_feats, tune, common_fields, output_path, filename)
 
-        fname = f'{fname}_final_clf'
+        filename = f'{filename}_final_clf'
 
         # Build final model
         splitter = StratifiedGroupKFold(
@@ -100,6 +136,7 @@ def predict_from_mems(fs, tune, select_feats, output_path=OUTPUT_PATH_PRED, **kw
         X_train, y_train = X.iloc[train_idx], y.iloc[train_idx]
         X_test, y_test = X.iloc[test_idx], y.iloc[test_idx]
 
+        
         res = train_test(X_train, y_train, X_test, y_test, fs.id_col, clf,
                          42, nominal_idx, method, select_feats, tune, importance=True)
 
@@ -125,10 +162,11 @@ def predict_from_mems(fs, tune, select_feats, output_path=OUTPUT_PATH_PRED, **kw
             output_path, f'{filename}_pred.csv'))
 
         # Save AUC
-        auc_res = res['auc'].update(common_fields)
+        # TODO - get ROC curve and save AUC as text
+        # auc_res = res['auc'].update(common_fields)
 
-        pd.DataFrame.from_dict(auc_res).to_csv(
-            Path.joinpath(output_path, f'{filename}_auc.csv'))
+        # pd.DataFrame.from_dict(auc_res).to_csv(
+        #     Path.joinpath(output_path, f'{filename}_auc.csv'))
 
         (feats, explainer, shap_values) = res['shap_tuple']
 

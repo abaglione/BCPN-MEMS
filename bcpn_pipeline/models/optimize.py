@@ -68,6 +68,7 @@ def tune_hyperparams(X, y, groups, method, random_state):
     # Create custom scorer for specificity
     scorer = make_scorer(recall_score, pos_label=0)
 
+    # TODO - explicitly set checkpoints dir here to solve issue
     tune_search = TuneGridSearchCV(estimator=model, param_grid=param_grid,
                                    cv=cv, scoring=scorer,  n_jobs=n_jobs,
                                    verbose=2)

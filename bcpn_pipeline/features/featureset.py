@@ -2,7 +2,6 @@ import numpy as np
 import pandas as pd
 from itertools import compress
 
-from ..models.predict import predict
 from ..consts import TARGET_HORIZONS
 
 class Featureset:
