@@ -3,7 +3,7 @@
 
 # # Loading
 
-# In[ ]:
+# In[1]:
 
 
 # IO
@@ -35,7 +35,8 @@ plt.rcParams.update({'figure.autolayout': True})
 # plt.rcParams.update({'figure.facecolor': [1.0, 1.0, 1.0, 1.0]})
 
 
-# In[ ]:
+
+# In[2]:
 
 
 # Load the data
@@ -48,7 +49,7 @@ df.head()
 # Thank you to Jason Brownlee
 # https://machinelearningmastery.com/basic-data-cleaning-for-machine-learning/
 
-# In[ ]:
+# In[3]:
 
 
 # Instantiate a Dataset class
@@ -56,7 +57,7 @@ dataset = data.Dataset(df, id_col = 'PtID')
 dataset
 
 
-# In[ ]:
+# In[4]:
 
 
 # -------- Perform an initial cleaning of the dataset ----------
@@ -93,7 +94,7 @@ dataset.df.head()
 
 # Extract temporal features by converting main dataset's df from wide-form to long-form.
 
-# In[ ]:
+# In[5]:
 
 
 rows = []
@@ -176,20 +177,20 @@ horizons_df = horizons_df.loc[horizons_df['DateEnroll'] < horizons_df['date']]
 
 # ### Quick Look at Adherence For Whole Study
 
-# In[ ]:
+# In[6]:
 
 
 horizons_df.head()
 
 
-# In[ ]:
+# In[7]:
 
 
 len(horizons_df.PtID.unique())
 # So, 3 were dropped for insufficient data
 
 
-# In[ ]:
+# In[8]:
 
 
 # All remaining participants
@@ -202,44 +203,42 @@ adherence = horizons_df.groupby('PtID').agg(
 adherence.head()
 
 
-# In[ ]:
+# In[9]:
 
 
 adherence.shape[0]
 
 
-# In[ ]:
+# In[10]:
 
 
 print(f"{round(adherence['adherent'].mean() * 100, 2)}% of participants were adherent across the whole study.")
 
 
-# In[ ]:
+# In[11]:
 
 
 navigation_ids = [13,26,32,34,37,38,41,45,52,53,56,64,66,72,76,82]
 len(navigation_ids)
 
 
-# In[ ]:
+# In[12]:
 
 
 navigation = adherence[adherence['PtID'].isin(navigation_ids)]
-
 print(f"{round(navigation['adherent'].mean() * 100, 2)}% of participants who received patient navigation were adherent across the whole study.")
 
 
-# In[ ]:
+# In[13]:
 
 
 no_navigation = adherence[~adherence['PtID'].isin(navigation_ids)]
-
 print(f"{round(no_navigation['adherent'].mean() * 100, 2)}% of participants who did not receive patient navigation were adherent across the whole study.")
 
 
 # ### Generate new features
 
-# In[ ]:
+# In[14]:
 
 
 # Add binary indicator of any usage (not just number of times used) on a given day
@@ -258,7 +257,7 @@ horizons_df = horizons_df[horizons_df['study_month'] > 0].reset_index(drop=True)
 horizons_df['study_month'].min() # verify
 
 
-# In[ ]:
+# In[15]:
 
 
 ''' Quick fix for duplicates that are introduced...
@@ -269,13 +268,13 @@ horizons_df.drop(df.index, axis=0, inplace=True)
 horizons_df
 
 
-# In[ ]:
+# In[16]:
 
 
 horizons_df
 
 
-# In[ ]:
+# In[17]:
 
 
 def get_col_mode(x):
@@ -308,20 +307,18 @@ for horizon in consts.TARGET_HORIZONS:
         cols = ['is_weekday', 'day_of_week']
         df2 = horizons_df[groupby_cols + cols]
         df = df.merge(df2, on=groupby_cols, how='inner')
-
+        
         # Add columns indicating if the MEMS cap was used during a given time(s) of day
         # Basically a manual one-hot encoding while we're here
         col = 'time_of_day'
         df2 = horizons_df.groupby(groupby_cols)[col].value_counts().reset_index(name='count')
         df2.rename(columns={'level_2': col}, inplace=True)
-
         
         df2 = df2.pivot_table(
             columns=col, index=['PtID', 'study_day'], values='count'
         ).reset_index().rename_axis(None, axis=1)
-
+        
         df = df.merge(df2, on=groupby_cols, how='inner')
-
         for col in consts.TIME_OF_DAY_PROPS['labels']:
             df[col] = pd.to_numeric(df[col].fillna(0).apply(lambda x: 1 if x > 0 else x))
         
@@ -356,7 +353,7 @@ for horizon in consts.TARGET_HORIZONS:
         ).reset_index()
 
         df = df.merge(df2, on=groupby_cols, how='inner')
-
+        
         # Explicitly set dtype so we can later select and one-hot encode
         df['event_time_of_day_mode'] = df['event_time_of_day_mode'].astype('category') 
 
@@ -384,20 +381,20 @@ for horizon in consts.TARGET_HORIZONS:
                                                     nominal_cols = nominal_cols))
 
 
-# In[ ]:
+# In[18]:
 
 
 # Sanity check
 temporal_featuresets[0].df.select_dtypes('category')
 
 
-# In[ ]:
+# In[19]:
 
 
 temporal_featuresets[0].df.iloc[-1]
 
 
-# In[ ]:
+# In[20]:
 
 
 temporal_featuresets[1].nominal_cols
@@ -405,7 +402,7 @@ temporal_featuresets[1].nominal_cols
 
 # ### Examine Collinearity and Variance Inflation Factor
 
-# In[ ]:
+# In[21]:
 
 
 # Study Day
@@ -413,7 +410,7 @@ df = temporal_featuresets[0].df
 df.select_dtypes('number').corr()
 
 
-# In[ ]:
+# In[22]:
 
 
 df2 = df.select_dtypes('number').drop(columns=['PtID', 'adherence_rate'])
@@ -423,7 +420,7 @@ vif_data["VIF"]  = [vif(df2.values, i) for i in range(len(df2.columns))]
 vif_data
 
 
-# In[ ]:
+# In[23]:
 
 
 # Drop a few to see if we improve
@@ -436,7 +433,7 @@ vif_data
 # Yep - looks much better
 
 
-# In[ ]:
+# In[24]:
 
 
 # Drop in the actual featureset and verify it's been dropped
@@ -445,7 +442,7 @@ print(temporal_featuresets[0].df.columns)
 temporal_featuresets[0]
 
 
-# In[ ]:
+# In[25]:
 
 
 # Study Week
@@ -453,7 +450,7 @@ df = temporal_featuresets[1].df.select_dtypes('number')
 df.corr()
 
 
-# In[ ]:
+# In[26]:
 
 
 df2 = df.select_dtypes('number').drop(columns=['PtID', 'adherence_rate'])
@@ -463,7 +460,7 @@ vif_data["VIF"]  = [vif(df2.values, i) for i in range(len(df2.columns))]
 vif_data
 
 
-# In[ ]:
+# In[27]:
 
 
 # Drop n_events, n_daily_events mean, and between event time mean to see if we improve
@@ -476,7 +473,7 @@ vif_data
 # Yep - looks much better
 
 
-# In[ ]:
+# In[28]:
 
 
 # Drop in the actual featureset and verify it's been dropped
@@ -485,7 +482,7 @@ print(temporal_featuresets[1].df.columns)
 temporal_featuresets[1]
 
 
-# In[ ]:
+# In[29]:
 
 
 for fs in temporal_featuresets:
@@ -502,14 +499,14 @@ for fs in temporal_featuresets:
 
 # # Prediction
 
-# In[ ]:
+# In[30]:
 
 
 # Sanity check - this column should NOT be in the final set
 # static_featuresets[0].df['total_days_8']
 
 
-# In[ ]:
+# In[31]:
 
 
 target_col = 'adherent'
@@ -538,6 +535,16 @@ for t_feats in temporal_featuresets:
     t_feats.nominal_cols += [target_col]
 
 
+# In[36]:
+
+
+temporal_featuresets[0].df
+
+
+# In[53]:
+
+
+
 # ## Study: Predict Adherence from MEMS Data Only
 
 # ### Tune number of lags
@@ -549,18 +556,18 @@ for t_feats in temporal_featuresets:
       and range of max_depths (since training with RF by default)
     max_depth exploration will help ensure we aren't overfitting.
 '''
-for t_feats in temporal_featuresets:
-    models.tune_lags(t_feats)
+# for t_feats in temporal_featuresets:
+#     models.tune_lags(t_feats)
 
 
-# In[ ]:
+# In[64]:
 
 
-# # Plot and analyze results
+# Plot and analyze results
 
 # results = []
 
-# for f in consts.OUTPUT_PATH_LAGS.glob('*_pred.csv'):
+# for f in consts.OUTPUT_PATH_LAGS.glob('*final_clf_pred.csv'):
 #     df = pd.read_csv(f)
 #     results.append(df)
 
@@ -570,7 +577,7 @@ for t_feats in temporal_featuresets:
 # results
 
 
-# In[ ]:
+# # In[65]:
 
 
 # for col in ['n_lags', 'accuracy', 'max_depth']:
@@ -578,29 +585,22 @@ for t_feats in temporal_featuresets:
 # results
 
 
-# In[ ]:
-
-
-# results['specificity_loss'] = 1-results['specificity']
-# results
-
-
-# In[ ]:
+# # In[66]:
 
 
 # plt.rcParams.update({'font.size': 14})
 
 
-# In[ ]:
+# # In[67]:
 
 
 # # '''
 # # Takeaways:
 
-# # - study_day: 4 lags with max_depth 2 best for study_day - some overfitting, but not dramatic. 
+# # - study_day: 3 lags with max_depth 2 best for study_day - some overfitting, but not dramatic. 
 # # Overfitting worsens beyond this.
 
-# # - study_week: 4 lags with shallow tree (max_depth=1) best for study week. 
+# # - study_week: 3 lags with shallow tree (max_depth=2) best for study week. 
 # # Overfitting worsens after that, with no major gain in performance
 # # '''
 
@@ -609,15 +609,15 @@ for t_feats in temporal_featuresets:
 # for max_depth in range(1, 3):
 #     df = results[results['max_depth'] == max_depth]
     
-#     g = sns.lineplot(x='n_lags',y='specificity_loss', hue='Feature Set', 
+#     g = sns.lineplot(x='n_lags',y='specificity', hue='Feature Set', 
 #                      style='Type', data=df, ax=axes[max_depth-1],
 #                      legend=(max_depth==2))
-#     g.set( ylim=(0.15, 0.4), title='Max Depth: ' + str(max_depth), ylabel='Specificity Loss', xlabel='Lags')
+#     g.set( ylim=(0, 1), title='Max Depth: ' + str(max_depth), ylabel='Specificity', xlabel='Lags')
     
 # axes[0].set(xlabel='(A)')
 # axes[1].legend(loc=(1.1, 0.5))
 # axes[1].set(xlabel='(B)')
-# plt.savefig(Path.joinpath(consts.OUTPUT_PATH_LAGS, 'spec_loss_md1_2.png'), bbox_inches='tight',
+# plt.savefig(Path.joinpath(consts.OUTPUT_PATH_LAGS, 'spec_md1_2.png'), bbox_inches='tight',
 #            facecolor='white', transparent=True
 #            )
 # plt.show()
@@ -628,13 +628,13 @@ for t_feats in temporal_featuresets:
 # for max_depth in range(3, 6):
 #     df = results[results['max_depth'] == max_depth]
     
-#     g = sns.lineplot(x='n_lags',y='specificity_loss', hue='Feature Set', 
+#     g = sns.lineplot(x='n_lags',y='specificity', hue='Feature Set', 
 #                      style='Type', data=df, ax=axes[max_depth-3],
 #                      legend=(max_depth==5))
-#     g.set( ylim=(0.15, 0.4), title='Max Depth: ' + str(max_depth), ylabel='Specificity Loss', xlabel='Lags')
+#     g.set( ylim=(0, 1), title='Max Depth: ' + str(max_depth), ylabel='Specificity', xlabel='Lags')
     
 # axes[2].legend(loc=(1.1, 0.5))
-# plt.savefig(Path.joinpath(consts.OUTPUT_PATH_LAGS, 'spec_loss_md3_5.png'), bbox_inches='tight',
+# plt.savefig(Path.joinpath(consts.OUTPUT_PATH_LAGS, 'spec_md3_5.png'), bbox_inches='tight',
 #            facecolor='white', transparent=True
 #            )
 # plt.show()
@@ -645,18 +645,12 @@ for t_feats in temporal_featuresets:
 # In[ ]:
 
 
-# # # ----- Now predict using optimal number of lags for each horizon--- 
-# for t_feats in temporal_featuresets:    
+# # ----- Now predict using optimal number of lags for each horizon--- 
+for t_feats in temporal_featuresets:    
     
-#     ''' These max_depth are for the default (baseline) classifiers only.
-#     Useful for benchmarking studies.'''
-#     if t_feats.horizon == 'study_day':
-#         n_lags = 4
-#         max_depth = 2
-#     else: # study week
-#         n_lags = 4
-#         max_depth = 1
-        
-#     fs_lagged = t_feats.prep_for_modeling(n_lags)
-#     models.predict_from_mems(fs_lagged, max_depth=max_depth)       
+    ''' These max_depth are for the default (baseline) classifiers only.
+    Useful for benchmarking studies.'''
+
+    fs_lagged = t_feats.prep_for_modeling(n_lags=3)
+    models.predict_from_mems(fs_lagged, max_depth=2)       
 

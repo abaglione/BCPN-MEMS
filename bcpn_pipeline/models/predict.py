@@ -1,14 +1,12 @@
 import numpy as np
 from pathlib import Path
 import pandas as pd
-from imblearn.over_sampling import SMOTENC
+from imblearn.over_sampling import SMOTE, SMOTENC
 import pickle
 from scipy import interp
-from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.svm import SVC
+
 from sklearn.metrics import roc_curve, auc
-from xgboost import XGBClassifier
 from sklearn.experimental import enable_iterative_imputer
 from sklearn.impute import IterativeImputer
 from sklearn.preprocessing import MinMaxScaler
@@ -32,23 +30,30 @@ def train_test(X_train, y_train, X_test, y_test, id_col, clf, random_state, nomi
     X_train = transform.impute(X_train, imputer)
     X_test = transform.impute(X_test, imputer)
 
-    try:
-        # Perform upsampling to handle class imbalance
+    # Perform upsampling to handle class imbalance
+    if nominal_idx:
         smote = SMOTENC(random_state=random_state,
                         categorical_features=nominal_idx)
-        X_train, y_train, upsampled_groups = transform.upsample(
-            X_train, y_train, id_col, smote)
+
+    else:
+        smote = SMOTE(random_state=random_state)
+            
+    try:
+        X_train, y_train, upsampled_groups = transform.upsample(X_train, y_train, id_col, smote)
 
     except ValueError:
         # Set n_neighbors = n_samples
         # Not great if we have a really small sample size. Hmm.
         k_neighbors = (y_train == 1).sum() - 1
         print('%d neighbors for SMOTE' % k_neighbors)
-        smote = SMOTENC(random_state=random_state, categorical_features=nominal_idx,
-                        k_neighbors=k_neighbors)
 
-        X_train, y_train, upsampled_groups = transform.upsample(
-            X_train, y_train, id_col, smote)
+        if nominal_idx:
+            smote = SMOTENC(random_state=random_state, categorical_features=nominal_idx,
+                            k_neighbors=k_neighbors)
+        else:
+            smote = SMOTE(random_state=random_state, k_neighbors=k_neighbors)
+
+        X_train, y_train, upsampled_groups = transform.upsample(X_train, y_train, id_col, smote)
 
     # Drop the id column from the Xs - IMPORTANT!
     X_train.drop(columns=[id_col], inplace=True)

@@ -141,8 +141,8 @@ def predict_from_mems(fs, tune, select_feats, output_path=OUTPUT_PATH_PRED, impo
         res, best_estimator = train_test(X_train, y_train, X_test, y_test, fs.id_col, clf,
                                          42, nominal_idx, method, select_feats, tune, importance=importance)
         
-        joblib.dump(best_estimator, f'{filename}.joblib', compress=1)
-        with open(f'{filename}_params.json', 'w') as f:
+        joblib.dump(best_estimator, output_path / f'{filename}.joblib', compress=1)
+        with open(output_path / f'{filename}_params.json', 'w') as f:
             json.dump(best_estimator.get_params(), f)
 
         train_perf_metrics = calc_performance_metrics(
@@ -171,7 +171,7 @@ def predict_from_mems(fs, tune, select_feats, output_path=OUTPUT_PATH_PRED, impo
 
         if not importance:
             continue
-        
+
         (feats, explainer, shap_values) = res['shap_tuple']
 
         with open(Path.joinpath(output_path, f'feats_{filename}.pkl'), 'wb') as fp:

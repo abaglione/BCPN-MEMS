@@ -129,6 +129,7 @@ class Featureset:
             end_col = fs.df.pop(fs.target_col)
             fs.df[fs.target_col] = end_col
 
+        assert not fs.df.isnull().values.any(), 'featureset contains NaNs'
         return fs
 
     def __repr__(self):    
