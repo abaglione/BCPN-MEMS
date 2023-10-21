@@ -13,7 +13,8 @@ from .metrics import calc_performance_metrics, get_mean_roc_auc
 # from .helpers import to_csv_async
 from sklearn.model_selection import StratifiedGroupKFold
 from pathlib import Path
-
+import joblib
+import json
 
 def tune_lags(fs):
 
@@ -46,11 +47,11 @@ def tune_lags(fs):
                 'RF': RandomForestClassifier(max_depth=max_depth, random_state=max_depth)
             }
 
-            kwargs = {'models': models}
+            kwargs = {'models': models, 'max_depth': max_depth}
 
             # Pass in max_depth so it gets recorded...dont' ask me why I designed it this way.
             predict_from_mems(fs=all_feats, tune=False, output_path=OUTPUT_PATH_LAGS,
-                              select_feats=False, **kwargs)
+                              select_feats=False, importance=False, repeated_cv=False, **kwargs)
 
 
 def get_default_clf(method, common_fields, max_depth, random_state):
@@ -82,7 +83,8 @@ def get_default_clf(method, common_fields, max_depth, random_state):
 
     return clf, common_fields
 
-def predict_from_mems(fs, tune, select_feats, output_path=OUTPUT_PATH_PRED, **kwargs):
+
+def predict_from_mems(fs, tune, select_feats, output_path=OUTPUT_PATH_PRED, importance=True, repeated_cv=True, **kwargs):
 
     common_fields = {'n_lags': fs.n_lags, 'featureset': fs.name, 'features_selected': select_feats,
                      'tuned': tune, 'target': fs.target_col}
@@ -103,8 +105,8 @@ def predict_from_mems(fs, tune, select_feats, output_path=OUTPUT_PATH_PRED, **kw
 
     for method, clf in models.items():
         if clf is None:
-            clf, common_fields = get_default_clf(method, common_fields, max_depth, 42)
-
+            clf, common_fields = get_default_clf(
+                method, common_fields, max_depth, 42)
 
         # Split into inputs and labels
         X = fs.df.drop(columns=[fs.target_col])
@@ -123,22 +125,25 @@ def predict_from_mems(fs, tune, select_feats, output_path=OUTPUT_PATH_PRED, **kw
         if tune:
             filename += '_tuned'
 
-        repeated_cross_validation(X, y, fs.id_col, clf, nominal_idx,
-                                  method, select_feats, tune, common_fields, output_path, filename)
+        if repeated_cv:
+            repeated_cross_validation(X, y, fs.id_col, clf, nominal_idx,
+                                    method, select_feats, tune, common_fields, output_path, filename)
 
         filename = f'{filename}_final_clf'
 
         # Build final model
-        splitter = StratifiedGroupKFold(
-            n_splits=2, random_state=42, shuffle=True)
+        splitter = StratifiedGroupKFold(n_splits=2, random_state=42, shuffle=True)
 
         train_idx, test_idx = next(splitter.split(X, y, groups=X[fs.id_col]))
         X_train, y_train = X.iloc[train_idx], y.iloc[train_idx]
         X_test, y_test = X.iloc[test_idx], y.iloc[test_idx]
 
+        res, best_estimator = train_test(X_train, y_train, X_test, y_test, fs.id_col, clf,
+                                         42, nominal_idx, method, select_feats, tune, importance=importance)
         
-        res = train_test(X_train, y_train, X_test, y_test, fs.id_col, clf,
-                         42, nominal_idx, method, select_feats, tune, importance=True)
+        joblib.dump(best_estimator, f'{filename}.joblib', compress=1)
+        with open(f'{filename}_params.json', 'w') as f:
+            json.dump(best_estimator.get_params(), f)
 
         train_perf_metrics = calc_performance_metrics(
             y_true=res['train_res']['y_true'], y_pred=res['train_res']['y_pred']
@@ -161,12 +166,8 @@ def predict_from_mems(fs, tune, select_feats, output_path=OUTPUT_PATH_PRED, **kw
         pd.concat(all_res).to_csv(Path.joinpath(
             output_path, f'{filename}_pred.csv'))
 
-        # Save AUC
-        # TODO - get ROC curve and save AUC as text
-        # auc_res = res['auc'].update(common_fields)
-
-        # pd.DataFrame.from_dict(auc_res).to_csv(
-        #     Path.joinpath(output_path, f'{filename}_auc.csv'))
+        res['df_roc'].to_csv(
+            Path.joinpath(output_path, f'{filename}_roc.csv'))
 
         (feats, explainer, shap_values) = res['shap_tuple']
 

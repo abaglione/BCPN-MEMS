@@ -46,7 +46,7 @@ def train_test(X_train, y_train, X_test, y_test, id_col, clf, random_state, nomi
         print('%d neighbors for SMOTE' % k_neighbors)
         smote = SMOTENC(random_state=random_state, categorical_features=nominal_idx,
                         k_neighbors=k_neighbors)
-        
+
         X_train, y_train, upsampled_groups = transform.upsample(
             X_train, y_train, id_col, smote)
 
@@ -97,6 +97,7 @@ def train_test(X_train, y_train, X_test, y_test, id_col, clf, random_state, nomi
     # Note we do not change pos_label here. Re-read Gu et al for explanation - focus is specificity for scoring, but not for curves
     fpr, tpr, thresholds = roc_curve(y_test, y_test_probas)
     roc_auc = auc(fpr, tpr)
+    df_roc = pd.DataFrame({'fpr': fpr, 'tpr': tpr, 'thresholds': thresholds, 'auc': roc_auc})
 
     tpr = interp(FPR_MEAN, fpr, tpr)
     tpr[0] = 0.0
@@ -105,31 +106,32 @@ def train_test(X_train, y_train, X_test, y_test, id_col, clf, random_state, nomi
     train_res = pd.DataFrame({'y_pred': y_train_pred, 'y_true': y_train})
     test_res = pd.DataFrame({'y_pred': y_test_pred, 'y_true': y_test})
 
-    res = {'train_res': train_res, 'test_res': test_res, 
-            'auc': roc_auc, 'tpr': tpr}
+    res = {'train_res': train_res, 'test_res': test_res,
+           'auc': roc_auc, 'tpr': tpr, 'df_roc': df_roc}
+    
     if importance:
         feats = list(X_test.columns)
         explainer, shap_values = calc_shap(
             X_train, X_test, clf, method, random_state)
         res['shap_tuple'] = (feats, explainer, shap_values)
 
-    return res
+    return res, clf
 
 
 def cross_validate(X, y, id_col, clf, random_state, nominal_idx, method, select_feats,
                    tune):
 
     res_all = {
-        'tpr': [], # Array of true positive rates
-        'auc': [], # Array of AUC scores
-        'train_res': [], # Array of dataframes of true vs pred labels
-        'test_res': [], # Array of dataframes of true vs pred labels
+        'tpr': [],  # Array of true positive rates
+        'auc': [],  # Array of AUC scores
+        'train_res': [],  # Array of dataframes of true vs pred labels
+        'test_res': [],  # Array of dataframes of true vs pred labels
     }
 
     # Set up outer CV
     ''' Need to be splitting at the subject level
         Thank you, Koesmahargyo et al.! '''
-    
+
     cv = StratifiedGroupKFold(n_splits=5, shuffle=True,
                               random_state=random_state)
 
@@ -139,11 +141,11 @@ def cross_validate(X, y, id_col, clf, random_state, nominal_idx, method, select_
         X_test, y_test = X.loc[test_index, :], y[test_index]
 
         # Do training and testing
-        res = train_test(X_train=X_train, X_test=X_test, y_train=y_train, y_test=y_test,
-                         id_col=id_col, clf=clf, random_state=random_state,
-                         nominal_idx=nominal_idx, method=method, select_feats=select_feats,
-                         tune=tune, importance=False)
-        
+        res, _ = train_test(X_train=X_train, X_test=X_test, y_train=y_train, y_test=y_test,
+                            id_col=id_col, clf=clf, random_state=random_state,
+                            nominal_idx=nominal_idx, method=method, select_feats=select_feats,
+                            tune=tune, importance=False)
+
         for k, v in res.items():
             res_all[k].append(v)
 
@@ -171,7 +173,7 @@ def cross_validate(X, y, id_col, clf, random_state, nominal_idx, method, select_
 def repeated_cross_validation(X, y, id_col, clf, nominal_idx, method, select_feats, tune,
                               common_fields, output_path, filename,
                               run_repeats=5):
-    
+
     tpr = []  # Array of true positive rates
     auc = []  # Array of AUC scores
 
@@ -180,11 +182,11 @@ def repeated_cross_validation(X, y, id_col, clf, nominal_idx, method, select_fea
     # Do repeated runs
     for run in range(0, run_repeats):
         print('Run %i of %i for %s model.' %
-                (run + 1, run_repeats, method))
+              (run + 1, run_repeats, method))
         random_state = run
 
-        res = cross_validate(X, y, id_col, clf, random_state, nominal_idx, method, 
-                            select_feats, tune)
+        res = cross_validate(X, y, id_col, clf, random_state, nominal_idx, method,
+                             select_feats, tune)
 
         # Get train and test results as separate dictionaries
         for d in [res['train_perf_metrics'], res['test_perf_metrics']]:
@@ -206,7 +208,7 @@ def repeated_cross_validation(X, y, id_col, clf, nominal_idx, method, select_fea
 
     # Calculate aggregate AUC and ROC
     test_roc_res, test_auc_res = get_mean_roc_auc(tpr, auc, FPR_MEAN)
-    
+
     # Indicates these are aggregated results
     common_fields.update({'run': -1})
 
@@ -216,6 +218,6 @@ def repeated_cross_validation(X, y, id_col, clf, nominal_idx, method, select_fea
 
     pd.DataFrame.from_dict(test_roc_res).to_csv(
         Path.joinpath(output_path, f'{filename}_roc.csv'))
-    
+
     pd.DataFrame([test_auc_res]).to_csv(
         Path.joinpath(output_path, f'{filename}_auc.csv'))

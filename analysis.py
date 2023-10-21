@@ -225,7 +225,7 @@ len(navigation_ids)
 
 
 navigation = adherence[adherence['PtID'].isin(navigation_ids)]
-display(navigation.shape[0])
+
 print(f"{round(navigation['adherent'].mean() * 100, 2)}% of participants who received patient navigation were adherent across the whole study.")
 
 
@@ -233,7 +233,7 @@ print(f"{round(navigation['adherent'].mean() * 100, 2)}% of participants who rec
 
 
 no_navigation = adherence[~adherence['PtID'].isin(navigation_ids)]
-display(no_navigation.shape[0])
+
 print(f"{round(no_navigation['adherent'].mean() * 100, 2)}% of participants who did not receive patient navigation were adherent across the whole study.")
 
 
@@ -308,22 +308,19 @@ for horizon in consts.TARGET_HORIZONS:
         cols = ['is_weekday', 'day_of_week']
         df2 = horizons_df[groupby_cols + cols]
         df = df.merge(df2, on=groupby_cols, how='inner')
-        display(df)
-        
+
         # Add columns indicating if the MEMS cap was used during a given time(s) of day
         # Basically a manual one-hot encoding while we're here
         col = 'time_of_day'
         df2 = horizons_df.groupby(groupby_cols)[col].value_counts().reset_index(name='count')
         df2.rename(columns={'level_2': col}, inplace=True)
-        display(df2)
+
         
         df2 = df2.pivot_table(
             columns=col, index=['PtID', 'study_day'], values='count'
         ).reset_index().rename_axis(None, axis=1)
-        display(df2)
-        
+
         df = df.merge(df2, on=groupby_cols, how='inner')
-        display(df)
 
         for col in consts.TIME_OF_DAY_PROPS['labels']:
             df[col] = pd.to_numeric(df[col].fillna(0).apply(lambda x: 1 if x > 0 else x))
@@ -359,8 +356,7 @@ for horizon in consts.TARGET_HORIZONS:
         ).reset_index()
 
         df = df.merge(df2, on=groupby_cols, how='inner')
-        display(df)
-        
+
         # Explicitly set dtype so we can later select and one-hot encode
         df['event_time_of_day_mode'] = df['event_time_of_day_mode'].astype('category') 
 
