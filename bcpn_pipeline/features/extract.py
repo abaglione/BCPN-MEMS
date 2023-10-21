@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import datetime
 
-from ..consts import DAYS_IN_WEEK
+from ..consts import DAYS_IN_WEEK, DAYS_IN_MONTH
     
 def reset_index(df):
     """
@@ -104,7 +104,7 @@ def get_temporal_feats(df, start_date_col, id_col, time_of_day_props):
     df['study_week'] = np.floor((df['date']- df[start_date_col]).dt.days / DAYS_IN_WEEK)
     
     # Estimate of month
-    df['study_month'] = np.floor((df['date']- df[start_date_col]) / np.timedelta64(1, 'M'))
+    df['study_month'] = np.floor((df['date']- df[start_date_col]).dt.days / DAYS_IN_MONTH)
     
     for col in ['time_of_day', 'day_of_week']:
         

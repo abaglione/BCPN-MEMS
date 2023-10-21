@@ -1,4 +1,5 @@
 from pathlib import Path
+import numpy as np
 
 DATA_PATH = Path('data/')
 
@@ -11,6 +12,8 @@ OUTPUT_PATH_LMM = Path.joinpath(OUTPUT_PATH_PRIMARY, 'lmm_task/')
 SECONDS_IN_HOUR = 3600.0
 DAYS_IN_WEEK = 7.0
 DAYS_IN_MONTH = 30.0 # This is, of course, an avg estimate and is not precise
+
+FPR_MEAN = np.linspace(0, 1, 100)
 
 # Times of day of MEMS use
 TIME_OF_DAY_PROPS ={

@@ -40,10 +40,9 @@ def calc_performance_metrics(y_true, y_pred):
 
     return stats
 
-def calc_shap(X_train, X_test, model, method, random_state, pos_label=1):
+def calc_shap(X_train, X_test, model, method, random_state, nsamples_max = 1000, pos_label=1):
     shap_values = None
     explainer = None
-    nsamples_max = 100
 
     print('Calculating SHAP values.')    
 
@@ -51,7 +50,7 @@ def calc_shap(X_train, X_test, model, method, random_state, pos_label=1):
         X_train = shap.utils.sample(X_train, nsamples = nsamples_max, random_state=random_state)
 
     if X_test.shape[0] > nsamples_max:
-        X_test = shap.utils.sample(X_train, nsamples = nsamples_max, random_state=random_state)
+        X_test = shap.utils.sample(X_test, nsamples = nsamples_max, random_state=random_state)
 
     if method == 'LogisticR':
         explainer = shap.explainers.Linear(model=model, masker=X_train)
