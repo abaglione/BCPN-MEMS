@@ -16,3 +16,4 @@ simplejson
 tune-sklearn
 ray[tune]==2.6.3
 xgboost
+inflection
